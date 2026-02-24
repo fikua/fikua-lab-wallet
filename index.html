@@ -133,6 +133,7 @@
                 <div class="tabs">
                     <button class="tab active" data-tab="credentials">Credentials</button>
                     <button class="tab" data-tab="activity">Activity</button>
+                    <button class="tab" data-tab="logs">Logs</button>
                 </div>
 
                 <!-- Credentials Tab -->
@@ -153,6 +154,17 @@
                             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                             <p>No activity yet</p>
                             <span>Your credential activity will appear here</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Logs Tab -->
+                <section id="tab-logs" class="tab-content hidden">
+                    <div id="logs-list" class="logs-list">
+                        <div class="empty-state">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                            <p>No logs yet</p>
+                            <span>Protocol activity will appear here when you scan a QR or add a credential</span>
                         </div>
                     </div>
                 </section>

@@ -64,11 +64,51 @@ function showFlowPhase(phase: 'processing' | 'consent' | 'error'): void {
 
 function updateFlowStatus(msg: string): void {
     $('flow-status').textContent = msg;
+    plog('step', msg);
 }
 
 function showFlowError(msg: string): void {
     showFlowPhase('error');
     $('flow-error-msg').textContent = msg;
+    plog('error', msg);
+}
+
+// =========================================================================
+// Protocol Log
+// =========================================================================
+
+interface LogEntry {
+    time: string;
+    level: 'info' | 'step' | 'error' | 'ok';
+    message: string;
+}
+
+const protocolLogs: LogEntry[] = [];
+const MAX_LOGS = 200;
+
+function plog(level: LogEntry['level'], message: string): void {
+    const now = new Date();
+    const time = now.toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+    protocolLogs.push({ time, level, message });
+    if (protocolLogs.length > MAX_LOGS) protocolLogs.shift();
+    renderLogs();
+}
+
+function renderLogs(): void {
+    const container = document.getElementById('logs-list');
+    if (!container) return;
+    const empty = container.querySelector('.empty-state');
+    if (empty && protocolLogs.length > 0) empty.remove();
+
+    // Only append the last entry for performance
+    const entry = protocolLogs[protocolLogs.length - 1];
+    const div = document.createElement('div');
+    div.className = 'log-entry log-' + entry.level;
+    div.innerHTML = '<span class="log-time">' + esc(entry.time) + '</span>'
+        + '<span class="log-level">' + esc(entry.level.toUpperCase()) + '</span>'
+        + '<span class="log-msg">' + esc(entry.message) + '</span>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
 }
 
 // =========================================================================
@@ -496,10 +536,13 @@ async function executeIssuanceFlow(offer: CredentialOffer): Promise<void> {
         const issuerUrl = offer.credential_issuer;
         const configId = offer.credential_configuration_ids[0];
         const grant = analyzeGrant(offer);
+        plog('info', 'Issuer: ' + issuerUrl + ' | Config: ' + configId + ' | Grant: ' + grant.type);
 
         updateFlowStatus('Fetching issuer metadata...');
         const issuerMeta = await fetchIssuerMetadata(issuerUrl);
+        plog('ok', 'Issuer metadata OK — credential_endpoint: ' + issuerMeta.credential_endpoint);
         const authMeta = await fetchAuthServerMetadata(issuerUrl);
+        plog('ok', 'Auth metadata OK — token_endpoint: ' + authMeta.token_endpoint);
 
         if (grant.type === 'pre-authorized_code') {
             await executePreAuthFlow(offer, grant, issuerMeta, authMeta, configId);
@@ -530,19 +573,23 @@ async function executePreAuthFlow(
         tokenParams.tx_code = txCode;
     }
     const tokenResponse = await requestToken(authMeta.token_endpoint, tokenParams);
+    plog('ok', 'Token OK — type: ' + tokenResponse.token_type);
 
     updateFlowStatus('Requesting nonce...');
     const nonceResponse = await requestNonce(issuerMeta.nonce_endpoint!);
+    plog('ok', 'Nonce: ' + nonceResponse.c_nonce.substring(0, 16) + '...');
 
     updateFlowStatus('Generating cryptographic proof...');
     const holderKeyPair = await generateHolderKeyPair();
     const proofJwt = await buildProofJwt(holderKeyPair, WALLET_BASE, issuerUrl, nonceResponse.c_nonce);
+    plog('ok', 'Proof JWT built');
 
     updateFlowStatus('Requesting credential...');
     const credResponse = await requestCredential(
         issuerMeta.credential_endpoint, tokenResponse.access_token,
         tokenResponse.token_type, configId, proofJwt,
     );
+    plog('ok', 'Credential response received');
 
     await processCredentialResponse(credResponse, issuerMeta, issuerUrl, configId, tokenResponse, holderKeyPair);
 }
@@ -880,10 +927,15 @@ async function startCamera(): Promise<void> {
 
         if (status) { status.textContent = 'Scanning...'; status.classList.remove('hidden'); }
 
-        scanController = startScanning(qrVideo, (result) => {
-            if (status) status.classList.add('hidden');
-            closeQrModal();
-            handleOfferUri(result.data);
+        scanController = startScanning(qrVideo, {
+            onResult: (result) => {
+                if (status) status.classList.add('hidden');
+                closeQrModal();
+                handleOfferUri(result.data);
+            },
+            onStatus: (msg) => {
+                if (status) status.textContent = msg;
+            },
         });
     } catch {
         fallback.classList.remove('hidden');
@@ -905,10 +957,16 @@ function stopCamera(): void {
 function closeQrModal(): void { stopCamera(); qrModal.close(); }
 
 function handleOfferUri(uri: string): void {
+    plog('info', 'QR/URI received: ' + uri.substring(0, 120) + (uri.length > 120 ? '...' : ''));
     const search = uri.includes('?') ? uri.substring(uri.indexOf('?')) : '';
     const params = new URLSearchParams(search);
     const offerData = parseCredentialOfferFromUrl(params);
-    if (offerData) processOffer(offerData);
+    if (offerData) {
+        plog('ok', 'Credential offer parsed (' + offerData.source + ')');
+        processOffer(offerData);
+    } else {
+        plog('error', 'No credential_offer or credential_offer_uri found in URI');
+    }
 }
 
 async function processOffer(offerData: OfferData): Promise<void> {
@@ -1003,8 +1061,7 @@ $('btn-skip-install').addEventListener('click', () => {
 // =========================================================================
 
 async function onSessionStart(): Promise<void> {
-    const user = JSON.parse(localStorage.getItem(USER_KEY) || '{}');
-    $('greeting').textContent = 'Hello, ' + (user.name || 'User');
+    $('greeting').textContent = 'Hello,';
     await renderCredentials();
     await renderActivity();
 

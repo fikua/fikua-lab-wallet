@@ -372,6 +372,48 @@ h1, h2, h3 { color: var(--heading); line-height: 1.3; }
 
 .tab-content.hidden { display: none; }
 
+/* --- Protocol Logs --- */
+.logs-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    line-height: 1.6;
+    background: var(--bg-alt);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+}
+
+.log-entry {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.15rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.log-entry:last-child { border-bottom: none; }
+
+.log-time {
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.log-level {
+    flex-shrink: 0;
+    font-weight: 600;
+    width: 3.5rem;
+    text-align: center;
+}
+
+.log-msg {
+    word-break: break-all;
+}
+
+.log-info .log-level { color: var(--accent); }
+.log-step .log-level { color: var(--text-muted); }
+.log-ok .log-level { color: #22c55e; }
+.log-error .log-level { color: #ef4444; }
+
 /* --- Credentials Grid --- */
 .credentials-grid {
     display: grid;
