@@ -877,6 +877,8 @@ async function processOffer(offerData: OfferData): Promise<void> {
 // PWA Install
 // =========================================================================
 
+const INSTALL_DISMISSED_KEY = 'fikua-install-dismissed';
+
 let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
 
 interface BeforeInstallPromptEvent extends Event {
@@ -884,18 +886,49 @@ interface BeforeInstallPromptEvent extends Event {
     userChoice: Promise<{ outcome: string }>;
 }
 
+function isIosSafari(): boolean {
+    const ua = navigator.userAgent;
+    return /iPad|iPhone|iPod/.test(ua) && !('MSStream' in window);
+}
+
+function isStandalone(): boolean {
+    return window.matchMedia('(display-mode: standalone)').matches
+        || ('standalone' in navigator && (navigator as unknown as { standalone: boolean }).standalone);
+}
+
+function showInstallBanner(): void {
+    if (isStandalone() || sessionStorage.getItem(INSTALL_DISMISSED_KEY)) return;
+    const banner = $('install-banner');
+    banner.classList.remove('hidden');
+}
+
+// Chromium browsers: capture beforeinstallprompt
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e as BeforeInstallPromptEvent;
-    $('btn-install').classList.remove('hidden');
+    showInstallBanner();
 });
+
+// iOS Safari: show instructions instead of install button
+if (isIosSafari() && !isStandalone()) {
+    $('install-banner-text').textContent = 'Tap the Share button, then "Add to Home Screen"';
+    $('btn-install').classList.add('hidden');
+    showInstallBanner();
+}
 
 $('btn-install').addEventListener('click', async () => {
     if (!deferredInstallPrompt) return;
     deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice;
+    const { outcome } = await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
-    $('btn-install').classList.add('hidden');
+    if (outcome === 'accepted') {
+        $('install-banner').classList.add('hidden');
+    }
+});
+
+$('btn-install-dismiss').addEventListener('click', () => {
+    $('install-banner').classList.add('hidden');
+    sessionStorage.setItem(INSTALL_DISMISSED_KEY, '1');
 });
 
 // =========================================================================
