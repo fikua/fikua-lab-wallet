@@ -964,6 +964,10 @@ function handleOfferUri(uri: string): void {
     if (offerData) {
         plog('ok', 'Credential offer parsed (' + offerData.source + ')');
         processOffer(offerData);
+    } else if (uri.startsWith('http://') || uri.startsWith('https://')) {
+        // Fallback: treat bare HTTP URL as a credential_offer_uri (by_reference)
+        plog('info', 'Treating as direct credential_offer_uri');
+        processOffer({ offerUri: uri, source: 'by_reference' });
     } else {
         plog('error', 'No credential_offer or credential_offer_uri found in URI');
     }
