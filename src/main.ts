@@ -12,6 +12,7 @@ import {
 import { openDb, saveCredential, getCredential, getAllCredentials, deleteCredentialById, logActivity, getAllActivity } from './storage';
 import { parseSdJwt } from './sdjwt';
 import { parseMdoc } from './mdoc';
+import { startScanning } from './qr-scanner';
 import {
     parseCredentialOfferFromUrl, fetchCredentialOffer,
     fetchIssuerMetadata, fetchAuthServerMetadata,
@@ -854,6 +855,7 @@ $('btn-close-add').addEventListener('click', () => ($('add-credential-modal') as
 const qrModal = $('qr-modal') as HTMLDialogElement;
 const qrVideo = $('qr-video') as HTMLVideoElement;
 let mediaStream: MediaStream | null = null;
+let scanController: AbortController | null = null;
 
 $('btn-scan').addEventListener('click', () => { qrModal.showModal(); startCamera(); });
 $('btn-close-qr').addEventListener('click', closeQrModal);
@@ -867,21 +869,37 @@ $('btn-qr-submit').addEventListener('click', () => {
 });
 
 async function startCamera(): Promise<void> {
+    const fallback = document.querySelector('.qr-fallback') as HTMLElement;
+    const status = document.querySelector('.qr-scan-status') as HTMLElement;
     try {
         mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         qrVideo.srcObject = mediaStream;
-        (document.querySelector('.qr-fallback') as HTMLElement).classList.add('hidden');
+        fallback.classList.add('hidden');
+
+        await new Promise<void>(resolve => { qrVideo.onloadeddata = () => resolve(); });
+
+        if (status) { status.textContent = 'Scanning...'; status.classList.remove('hidden'); }
+
+        scanController = startScanning(qrVideo, (result) => {
+            if (status) status.classList.add('hidden');
+            closeQrModal();
+            handleOfferUri(result.data);
+        });
     } catch {
-        (document.querySelector('.qr-fallback') as HTMLElement).classList.remove('hidden');
+        fallback.classList.remove('hidden');
+        if (status) status.classList.add('hidden');
     }
 }
 
 function stopCamera(): void {
+    if (scanController) { scanController.abort(); scanController = null; }
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
         mediaStream = null;
     }
     qrVideo.srcObject = null;
+    const status = document.querySelector('.qr-scan-status') as HTMLElement;
+    if (status) status.classList.add('hidden');
 }
 
 function closeQrModal(): void { stopCamera(); qrModal.close(); }
