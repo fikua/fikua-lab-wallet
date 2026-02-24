@@ -83,7 +83,10 @@ async function signES256(privateKey: CryptoKey, data: string | Uint8Array): Prom
         privateKey,
         bytes as Uint8Array<ArrayBuffer>,
     );
-    return derToRaw(new Uint8Array(sig));
+    // Web Crypto returns raw R||S (64 bytes for P-256), NOT DER.
+    // Node.js (used by Vitest) returns DER — convert only when needed.
+    const raw = new Uint8Array(sig);
+    return raw.length !== 64 ? derToRaw(raw) : raw;
 }
 
 /** Build and sign a JWT with ES256. */
