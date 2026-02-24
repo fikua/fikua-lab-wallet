@@ -146,6 +146,18 @@ export interface Disclosure {
 }
 
 // =========================================================================
+// mdoc Types
+// =========================================================================
+
+export interface ParsedMdoc {
+    raw: string;
+    docType: string;
+    claims: Record<string, unknown>;
+    validFrom: string | null;
+    validUntil: string | null;
+}
+
+// =========================================================================
 // Flow State (persisted in sessionStorage during auth code redirect)
 // =========================================================================
 

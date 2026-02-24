@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#2A9D8F">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/shared/consent.css">
     <script src="/shared/consent.js"></script>
 </head>
@@ -53,6 +53,16 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                             Create passkey
                         </button>
+                    </div>
+
+                    <div id="login-phase-install" class="phase hidden">
+                        <p class="login-install-text">For the best experience, install this app first. Your credentials and passkey will be stored securely in the app.</p>
+                        <button id="btn-login-install" class="btn btn-accent btn-lg">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Install App
+                        </button>
+                        <p id="login-install-ios" class="login-install-ios hidden">Tap <strong>Share</strong> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> then <strong>Add to Home Screen</strong></p>
+                        <button id="btn-skip-install" class="btn-link">Continue in browser</button>
                     </div>
 
                     <div id="login-phase-loading" class="phase hidden">

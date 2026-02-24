@@ -200,6 +200,33 @@ h1, h2, h3 { color: var(--heading); line-height: 1.3; }
     margin-top: 0.75rem;
 }
 
+.login-install-text {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+}
+
+.login-install-ios {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-top: 1rem;
+    line-height: 1.6;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font);
+    font-size: 0.8rem;
+    cursor: pointer;
+    margin-top: 1rem;
+    text-decoration: underline;
+    padding: 0;
+}
+.btn-link:hover { color: var(--text); }
+
 /* --- Buttons --- */
 .btn {
     font-family: var(--font);
@@ -703,15 +730,28 @@ h1, h2, h3 { color: var(--heading); line-height: 1.3; }
 }
 
 /* --- Privacy Mode --- */
+.privacy-blur .credential-title strong,
+.privacy-blur .credential-title span,
+.privacy-blur .credential-status,
+.privacy-blur .credential-details span,
+.privacy-blur .credential-claims-preview .claim-value,
+.privacy-blur .detail-card h2,
+.privacy-blur .detail-issuer,
+.privacy-blur .detail-card .credential-status,
 .privacy-blur .claim-value,
+.privacy-blur .claim-label,
+.privacy-blur .consent-claim-label,
 .privacy-blur .consent-claim-value,
-.privacy-blur .credential-claims-preview .claim-value {
+.privacy-blur .detail-claims h3,
+.privacy-blur .detail-metadata h3 {
     filter: blur(5px);
     user-select: none;
     pointer-events: none;
 }
 
-.privacy-blur .activity-info span {
+.privacy-blur .activity-info strong,
+.privacy-blur .activity-info span,
+.privacy-blur .activity-time {
     filter: blur(5px);
     user-select: none;
 }

@@ -11,6 +11,7 @@ import {
 } from './crypto';
 import { openDb, saveCredential, getCredential, getAllCredentials, deleteCredentialById, logActivity, getAllActivity } from './storage';
 import { parseSdJwt } from './sdjwt';
+import { parseMdoc } from './mdoc';
 import {
     parseCredentialOfferFromUrl, fetchCredentialOffer,
     fetchIssuerMetadata, fetchAuthServerMetadata,
@@ -21,7 +22,7 @@ import {
 } from './protocol';
 import type {
     CredentialOffer, CredentialIssuerMetadata, AuthServerMetadata,
-    CredentialResponse, GrantInfo, OfferData, StoredCredential, ParsedSdJwt,
+    CredentialResponse, GrantInfo, OfferData, StoredCredential,
     AuthFlowState, AuthCodeGrant,
 } from './types';
 
@@ -47,9 +48,10 @@ function showScreen(name: 'login' | 'wallet' | 'flow' | 'detail'): void {
     screenDetail.classList.toggle('hidden', name !== 'detail');
 }
 
-function showLoginPhase(name: 'start' | 'create' | 'loading'): void {
+function showLoginPhase(name: 'start' | 'create' | 'install' | 'loading'): void {
     $('login-phase-start').classList.toggle('hidden', name !== 'start');
     $('login-phase-create').classList.toggle('hidden', name !== 'create');
+    $('login-phase-install').classList.toggle('hidden', name !== 'install');
     $('login-phase-loading').classList.toggle('hidden', name !== 'loading');
 }
 
@@ -431,21 +433,23 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 let consentResolve: ((accepted: boolean) => void) | null = null;
 
-function showCredentialConsent(parsed: ParsedSdJwt, issuerMeta: CredentialIssuerMetadata): Promise<boolean> {
+function showCredentialConsent(
+    claims: Record<string, unknown>, issuerUrl: string, issuerMeta: CredentialIssuerMetadata,
+): Promise<boolean> {
     return new Promise((resolve) => {
         consentResolve = resolve;
         showFlowPhase('consent');
 
-        const issuerDisplay = issuerMeta.display?.[0]?.name ?? parsed.issuer;
+        const issuerDisplay = issuerMeta.display?.[0]?.name ?? issuerUrl;
         $('consent-issuer').innerHTML = `
             <div class="consent-issuer-info">
                 <strong>${esc(issuerDisplay)}</strong>
-                <span>${esc(parsed.issuer)}</span>
+                <span>${esc(issuerUrl)}</span>
             </div>`;
 
         const skipKeys = new Set(['iss', 'sub', 'iat', 'exp', 'vct', '_sd', '_sd_alg']);
         let html = '';
-        for (const [key, value] of Object.entries(parsed.allClaims)) {
+        for (const [key, value] of Object.entries(claims)) {
             if (skipKeys.has(key)) continue;
             html += `<div class="consent-claim">
                 <span class="consent-claim-label">${esc(getClaimLabel(key))}</span>
@@ -692,29 +696,55 @@ async function processCredentialResponse(
     holderKeyPair: CryptoKeyPair,
 ): Promise<void> {
     updateFlowStatus('Processing credential...');
-    const sdJwt = credResponse.credentials[0].credential;
-    const parsed = parseSdJwt(sdJwt);
-
-    const accepted = await showCredentialConsent(parsed, issuerMeta);
-    const issuerDisplay = issuerMeta.display?.[0]?.name ?? issuerUrl;
+    const rawCredential = credResponse.credentials[0].credential;
     const credConfig = issuerMeta.credential_configurations_supported?.[configId];
+    const format = credConfig?.format ?? 'dc+sd-jwt';
+    const issuerDisplay = issuerMeta.display?.[0]?.name ?? issuerUrl;
     const credName = credConfig?.credential_metadata?.display?.[0]?.name ?? getClaimLabel(configId);
+
+    // Parse according to format
+    let claims: Record<string, unknown>;
+    let storedFormat: string;
+    let vct: string;
+    let alg: string;
+    let issuedAt: string | null;
+    let expiresAt: string | null;
+
+    if (format === 'mso_mdoc') {
+        const mdoc = parseMdoc(rawCredential);
+        claims = mdoc.claims;
+        storedFormat = 'mso_mdoc';
+        vct = mdoc.docType;
+        alg = 'ES256';
+        issuedAt = mdoc.validFrom;
+        expiresAt = mdoc.validUntil;
+    } else {
+        const parsed = parseSdJwt(rawCredential);
+        claims = parsed.allClaims;
+        storedFormat = (parsed.header.typ as string) || 'dc+sd-jwt';
+        vct = parsed.vct ?? '';
+        alg = (parsed.header.alg as string) || 'ES256';
+        issuedAt = parsed.issuedAt ? new Date(parsed.issuedAt * 1000).toISOString() : null;
+        expiresAt = parsed.expiresAt ? new Date(parsed.expiresAt * 1000).toISOString() : null;
+    }
+
+    const accepted = await showCredentialConsent(claims, issuerUrl, issuerMeta);
 
     if (accepted) {
         const credId = crypto.randomUUID();
         await saveCredential({
             id: credId,
-            rawSdJwt: sdJwt,
-            format: (parsed.header.typ as string) || 'dc+sd-jwt',
+            rawSdJwt: rawCredential,
+            format: storedFormat,
             issuer: issuerUrl,
             issuerName: issuerDisplay,
             credentialConfigId: configId,
-            vct: parsed.vct ?? '',
-            claims: parsed.allClaims,
+            vct,
+            claims,
             metadata: {
-                alg: (parsed.header.alg as string) || 'ES256',
-                issuedAt: parsed.issuedAt ? new Date(parsed.issuedAt * 1000).toISOString() : null,
-                expiresAt: parsed.expiresAt ? new Date(parsed.expiresAt * 1000).toISOString() : null,
+                alg,
+                issuedAt,
+                expiresAt,
                 notificationId: credResponse.notification_id ?? null,
                 notificationEndpoint: issuerMeta.notification_endpoint ?? null,
             },
@@ -909,13 +939,17 @@ window.addEventListener('beforeinstallprompt', (e) => {
     showInstallBanner();
 });
 
-// iOS Safari: show instructions instead of install button
+// iOS Safari: show instructions instead of install button (both in banner and login phase)
 if (isIosSafari() && !isStandalone()) {
     $('install-banner-text').textContent = 'Tap the Share button, then "Add to Home Screen"';
     $('btn-install').classList.add('hidden');
     showInstallBanner();
+    // Login install phase: show iOS instructions, hide install button
+    $('btn-login-install').classList.add('hidden');
+    $('login-install-ios').classList.remove('hidden');
 }
 
+// Wallet screen install banner
 $('btn-install').addEventListener('click', async () => {
     if (!deferredInstallPrompt) return;
     deferredInstallPrompt.prompt();
@@ -929,6 +963,21 @@ $('btn-install').addEventListener('click', async () => {
 $('btn-install-dismiss').addEventListener('click', () => {
     $('install-banner').classList.add('hidden');
     sessionStorage.setItem(INSTALL_DISMISSED_KEY, '1');
+});
+
+// Login screen install phase
+$('btn-login-install').addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    if (outcome === 'accepted') {
+        showLoginPhase('create');
+    }
+});
+
+$('btn-skip-install').addEventListener('click', () => {
+    showLoginPhase('create');
 });
 
 // =========================================================================
@@ -997,7 +1046,13 @@ async function init(): Promise<void> {
         await onSessionStart();
     } else {
         showScreen('login');
-        showLoginPhase(hasPasskey() ? 'start' : 'create');
+        if (hasPasskey()) {
+            showLoginPhase('start');
+        } else if (!isStandalone()) {
+            showLoginPhase('install');
+        } else {
+            showLoginPhase('create');
+        }
     }
 }
 
