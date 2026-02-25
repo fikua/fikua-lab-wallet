@@ -1030,4 +1030,26 @@ h1, h2, h3 { color: var(--heading); line-height: 1.3; }
     .welcome-row { flex-direction: column; align-items: flex-start; }
     .flow-main { padding: 2rem 1rem; }
     .detail-main { padding: 1rem; }
+
+    .consent-claim,
+    .claim-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.15rem;
+    }
+
+    .consent-claim-value,
+    .claim-value {
+        text-align: left;
+        max-width: 100%;
+        word-break: break-word;
+    }
+
+    .consent-actions {
+        flex-direction: column;
+    }
+    .consent-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
 }
