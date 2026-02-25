@@ -19,6 +19,6 @@
         "vitest": "^4.0.18"
     },
     "dependencies": {
-        "jsqr": "^1.4.0"
+        "qr-scanner": "^1.4.2"
     }
 }

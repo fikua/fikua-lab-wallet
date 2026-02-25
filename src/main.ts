@@ -906,12 +906,11 @@ $('btn-close-add').addEventListener('click', () => ($('add-credential-modal') as
 
 const qrModal = $('qr-modal') as HTMLDialogElement;
 const qrVideo = $('qr-video') as HTMLVideoElement;
-let mediaStream: MediaStream | null = null;
 let scanController: AbortController | null = null;
 
 $('btn-scan').addEventListener('click', () => { qrModal.showModal(); startCamera(); });
 $('btn-close-qr').addEventListener('click', closeQrModal);
-qrModal.addEventListener('close', stopCamera);
+qrModal.addEventListener('close', stopScanner);
 
 $('btn-qr-submit').addEventListener('click', () => {
     const input = ($('qr-url-input') as HTMLInputElement).value.trim();
@@ -920,46 +919,37 @@ $('btn-qr-submit').addEventListener('click', () => {
     handleOfferUri(input);
 });
 
-async function startCamera(): Promise<void> {
+function startCamera(): void {
     const fallback = document.querySelector('.qr-fallback') as HTMLElement;
     const status = document.querySelector('.qr-scan-status') as HTMLElement;
-    try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        qrVideo.srcObject = mediaStream;
-        fallback.classList.add('hidden');
 
-        await new Promise<void>(resolve => { qrVideo.onloadeddata = () => resolve(); });
+    if (fallback) fallback.classList.add('hidden');
+    if (status) { status.textContent = 'Scanning...'; status.classList.remove('hidden'); }
 
-        if (status) { status.textContent = 'Scanning...'; status.classList.remove('hidden'); }
-
-        scanController = startScanning(qrVideo, {
-            onResult: (result) => {
+    scanController = startScanning(qrVideo, {
+        onResult: (result) => {
+            if (status) status.classList.add('hidden');
+            closeQrModal();
+            handleOfferUri(result.data);
+        },
+        onStatus: (msg) => {
+            if (msg === 'Camera not available') {
+                if (fallback) fallback.classList.remove('hidden');
                 if (status) status.classList.add('hidden');
-                closeQrModal();
-                handleOfferUri(result.data);
-            },
-            onStatus: (msg) => {
-                if (status) status.textContent = msg;
-            },
-        });
-    } catch {
-        fallback.classList.remove('hidden');
-        if (status) status.classList.add('hidden');
-    }
+            } else if (status) {
+                status.textContent = msg;
+            }
+        },
+    });
 }
 
-function stopCamera(): void {
+function stopScanner(): void {
     if (scanController) { scanController.abort(); scanController = null; }
-    if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-    }
-    qrVideo.srcObject = null;
     const status = document.querySelector('.qr-scan-status') as HTMLElement;
     if (status) status.classList.add('hidden');
 }
 
-function closeQrModal(): void { stopCamera(); qrModal.close(); }
+function closeQrModal(): void { stopScanner(); qrModal.close(); }
 
 function handleOfferUri(uri: string): void {
     plog('info', 'QR/URI received: ' + uri.substring(0, 120) + (uri.length > 120 ? '...' : ''));

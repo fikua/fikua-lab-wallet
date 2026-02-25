@@ -1,104 +1,106 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-function createMockVideo(readyState = 0, videoWidth = 0, videoHeight = 0): HTMLVideoElement {
-    const video = document.createElement('video');
-    Object.defineProperty(video, 'readyState', { value: readyState, writable: true });
-    Object.defineProperty(video, 'videoWidth', { value: videoWidth, writable: true });
-    Object.defineProperty(video, 'videoHeight', { value: videoHeight, writable: true });
-    return video;
-}
+// Mock qr-scanner module — nimiq's QrScanner manages camera & worker internally,
+// so we mock at the module boundary to test our wrapper's behaviour.
+const startMock = vi.fn().mockResolvedValue(undefined);
+const stopMock = vi.fn();
+const destroyMock = vi.fn();
+let constructorCallback: ((result: { data: string }) => void) | null = null;
 
-describe('startScanning (worker fallback path)', () => {
-    let rafCallbacks: Array<(t: number) => void>;
-    let originalRaf: typeof requestAnimationFrame;
-    let terminateSpy: ReturnType<typeof vi.fn>;
+vi.mock('qr-scanner', () => {
+    return {
+        default: class MockQrScanner {
+            constructor(_video: HTMLVideoElement, onDecode: (result: { data: string }) => void) {
+                constructorCallback = onDecode;
+            }
+            start = startMock;
+            stop = stopMock;
+            destroy = destroyMock;
+        },
+    };
+});
 
+describe('startScanning (qr-scanner nimiq wrapper)', () => {
     beforeEach(() => {
-        // Ensure no BarcodeDetector so worker fallback path runs
-        delete (globalThis as Record<string, unknown>).BarcodeDetector;
-
-        rafCallbacks = [];
-        originalRaf = globalThis.requestAnimationFrame;
-        globalThis.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => {
-            rafCallbacks.push(cb);
-            return rafCallbacks.length;
-        }) as unknown as typeof requestAnimationFrame;
-
-        terminateSpy = vi.fn();
-        vi.stubGlobal('Worker', class MockWorker {
-            onmessage: ((e: MessageEvent) => void) | null = null;
-            postMessage = vi.fn();
-            terminate = terminateSpy;
-            addEventListener = vi.fn();
-        });
+        vi.clearAllMocks();
+        constructorCallback = null;
     });
 
     afterEach(() => {
-        globalThis.requestAnimationFrame = originalRaf;
-        vi.unstubAllGlobals();
         vi.resetModules();
     });
 
-    function flushFrame(timestamp: number): void {
-        const pending = [...rafCallbacks];
-        rafCallbacks = [];
-        pending.forEach(cb => cb(timestamp));
-    }
-
     it('returns an AbortController', async () => {
         const { startScanning } = await import('./qr-scanner');
-        const video = createMockVideo();
+        const video = document.createElement('video');
         const controller = startScanning(video, { onResult: vi.fn() });
         expect(controller).toBeInstanceOf(AbortController);
         controller.abort();
     });
 
-    it('schedules a requestAnimationFrame on start', async () => {
+    it('calls scanner.start() on creation', async () => {
         const { startScanning } = await import('./qr-scanner');
-        const video = createMockVideo();
+        const video = document.createElement('video');
         const controller = startScanning(video, { onResult: vi.fn() });
-        expect(requestAnimationFrame).toHaveBeenCalledOnce();
+        expect(startMock).toHaveBeenCalledOnce();
         controller.abort();
     });
 
-    it('stops scanning when aborted', async () => {
+    it('calls onResult when QR code is detected', async () => {
         const { startScanning } = await import('./qr-scanner');
-        const video = createMockVideo();
-        const controller = startScanning(video, { onResult: vi.fn() });
-        controller.abort();
-        flushFrame(0);
-        expect(rafCallbacks).toHaveLength(0);
-    });
-
-    it('does not call onResult when video has no data', async () => {
-        const { startScanning } = await import('./qr-scanner');
-        const video = createMockVideo(0, 0, 0);
+        const video = document.createElement('video');
         const onResult = vi.fn();
         const controller = startScanning(video, { onResult });
-        flushFrame(0);
-        flushFrame(200);
-        expect(onResult).not.toHaveBeenCalled();
+
+        // Simulate QR detection via the callback captured from the constructor
+        constructorCallback!({ data: 'openid-credential-offer://test' });
+
+        expect(onResult).toHaveBeenCalledWith({ data: 'openid-credential-offer://test' });
+        expect(stopMock).toHaveBeenCalled();
+        expect(destroyMock).toHaveBeenCalled();
         controller.abort();
     });
 
-    it('schedules next frame when video has no data', async () => {
+    it('stops and destroys scanner on abort', async () => {
         const { startScanning } = await import('./qr-scanner');
-        const video = createMockVideo(0, 0, 0);
+        const video = document.createElement('video');
         const controller = startScanning(video, { onResult: vi.fn() });
-        flushFrame(0);
-        expect(rafCallbacks.length).toBeGreaterThan(0);
+
         controller.abort();
+
+        expect(stopMock).toHaveBeenCalled();
+        expect(destroyMock).toHaveBeenCalled();
     });
 
-    it('terminates worker on abort', async () => {
+    it('calls onStatus with "Scanning..." after start', async () => {
         const { startScanning } = await import('./qr-scanner');
-        const video = createMockVideo();
-        const controller = startScanning(video, { onResult: vi.fn() });
-        controller.abort();
-        expect(terminateSpy).toHaveBeenCalled();
+        const video = document.createElement('video');
+        const onStatus = vi.fn();
+        startScanning(video, { onResult: vi.fn(), onStatus });
+
+        // Wait for the start() promise to resolve
+        await vi.waitFor(() => expect(onStatus).toHaveBeenCalledWith('Scanning...'));
     });
 
-    // Canvas decode and BarcodeDetector tests require a real browser.
-    // QR decode accuracy is covered by the 'qr' library's own test suite.
-    // Full integration testing is done manually on a real device.
+    it('calls onStatus with "QR detected" before onResult', async () => {
+        const { startScanning } = await import('./qr-scanner');
+        const video = document.createElement('video');
+        const calls: string[] = [];
+        const controller = startScanning(video, {
+            onResult: () => calls.push('result'),
+            onStatus: (msg) => calls.push('status:' + msg),
+        });
+
+        // Wait for start, then simulate detection
+        await vi.waitFor(() => expect(calls).toContain('status:Scanning...'));
+        constructorCallback!({ data: 'test' });
+
+        expect(calls).toContain('status:QR detected');
+        const qrIdx = calls.indexOf('status:QR detected');
+        const resultIdx = calls.indexOf('result');
+        expect(qrIdx).toBeLessThan(resultIdx);
+        controller.abort();
+    });
+
+    // Full integration testing (real camera + QR decode) is done manually on device.
 });
