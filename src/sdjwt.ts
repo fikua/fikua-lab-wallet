@@ -1,6 +1,32 @@
 import { base64urlDecodeJson } from './utils';
 import type { ParsedSdJwt, Disclosure } from './types';
 
+/** Filter an SD-JWT's disclosures to only include the requested claims. */
+export function filterDisclosuresForPresentation(
+    sdJwtString: string,
+    requestedClaims: string[],
+): { issuerJwt: string; disclosures: string[] } {
+    const parts = sdJwtString.split('~').filter(p => p.length > 0);
+    const issuerJwt = parts[0];
+    const allDisclosures = parts.slice(1);
+    const requested = new Set(requestedClaims);
+
+    const filtered: string[] = [];
+    for (const d of allDisclosures) {
+        try {
+            const decoded = base64urlDecodeJson(d) as unknown;
+            if (Array.isArray(decoded) && decoded.length >= 3) {
+                const name = decoded[1] as string;
+                if (requested.has(name)) filtered.push(d);
+            }
+        } catch {
+            // skip unparseable
+        }
+    }
+
+    return { issuerJwt, disclosures: filtered };
+}
+
 /** Parse an SD-JWT VC string into structured data. */
 export function parseSdJwt(sdJwtString: string): ParsedSdJwt {
     const parts = sdJwtString.split('~').filter(p => p.length > 0);

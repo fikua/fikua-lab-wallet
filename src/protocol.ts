@@ -13,7 +13,10 @@ import type {
     TokenRequestOptions,
     CredentialRequestOptions,
     PreAuthGrant,
+    Oid4vpAuthorizationRequest,
+    StoredCredential,
 } from './types';
+import { filterDisclosuresForPresentation } from './sdjwt';
 
 // =========================================================================
 // Credential Offer
@@ -275,4 +278,71 @@ export function getPreAuthCode(grant: GrantInfo): string {
 
 export function getPreAuthTxCode(grant: GrantInfo): PreAuthGrant['tx_code'] | undefined {
     return (grant.data as PreAuthGrant).tx_code;
+}
+
+// =========================================================================
+// OID4VP — Presentation
+// =========================================================================
+
+/** Fetch the Authorization Request (Request Object) from the verifier. */
+export async function fetchRequestObject(requestUri: string): Promise<Oid4vpAuthorizationRequest> {
+    const res = await fetch(requestUri, {
+        headers: { 'Accept': 'application/json' },
+    });
+    if (!res.ok) throw new Error('Failed to fetch request object: ' + res.status);
+    const authReq: Oid4vpAuthorizationRequest = await res.json();
+    if (authReq.response_type !== 'vp_token') {
+        throw new Error('Unsupported response_type: ' + authReq.response_type);
+    }
+    if (!authReq.response_uri || !authReq.nonce || !authReq.state) {
+        throw new Error('Missing required fields in authorization request');
+    }
+    return authReq;
+}
+
+/**
+ * Build VP Token: SD-JWT presentation with selective disclosures + KB-JWT.
+ * Format: <issuer-jwt>~<disc1>~<disc2>~...~<kb-jwt>
+ */
+export async function buildVpToken(
+    credential: StoredCredential,
+    requestedClaims: string[],
+    nonce: string,
+    audience: string,
+): Promise<string> {
+    const { issuerJwt, disclosures } = filterDisclosuresForPresentation(
+        credential.rawSdJwt, requestedClaims,
+    );
+
+    // Build the SD-JWT without KB-JWT (for sd_hash calculation)
+    const sdJwtWithoutKb = issuerJwt + '~' + disclosures.join('~') + '~';
+
+    // Compute sd_hash = base64url(SHA-256(sd-jwt-without-kb-jwt))
+    const hash = await sha256(sdJwtWithoutKb);
+    const sdHash = base64urlEncode(hash);
+
+    // Build KB-JWT
+    const kbHeader = { typ: 'kb+jwt', alg: 'ES256' };
+    const kbPayload = {
+        iat: Math.floor(Date.now() / 1000),
+        aud: audience,
+        nonce,
+        sd_hash: sdHash,
+    };
+    const kbJwt = await buildJwt(kbHeader, kbPayload, credential.holderKey.privateKey);
+
+    return sdJwtWithoutKb + kbJwt;
+}
+
+/** Submit VP Token to the verifier's response_uri via direct_post. */
+export async function submitPresentation(
+    responseUri: string,
+    vpToken: string,
+    state: string,
+): Promise<Response> {
+    return fetch(responseUri, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ vp_token: vpToken, state }).toString(),
+    });
 }

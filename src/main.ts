@@ -20,6 +20,7 @@ import {
     buildProofJwt, requestCredential, sendNotification,
     buildDpopProof, generateWia, generateWiaPop,
     pushAuthorizationRequest, getPreAuthCode, getPreAuthTxCode,
+    fetchRequestObject, buildVpToken, submitPresentation,
 } from './protocol';
 import type {
     CredentialOffer, CredentialIssuerMetadata, AuthServerMetadata,
@@ -951,8 +952,147 @@ function stopScanner(): void {
 
 function closeQrModal(): void { stopScanner(); qrModal.close(); }
 
+// =========================================================================
+// OID4VP — Presentation Flow
+// =========================================================================
+
+async function handlePresentationRequest(uri: string): Promise<void> {
+    plog('info', 'OID4VP presentation request detected');
+    showScreen('flow');
+    showFlowPhase('processing');
+
+    try {
+        // 1. Parse URI params
+        const search = uri.includes('?') ? uri.substring(uri.indexOf('?')) : '';
+        const params = new URLSearchParams(search);
+        const requestUri = params.get('request_uri');
+        const clientId = params.get('client_id') || '';
+
+        if (!requestUri) {
+            showFlowError('Missing request_uri in OID4VP request');
+            return;
+        }
+
+        // 2. Fetch Authorization Request (Request Object)
+        updateFlowStatus('Fetching verification request...');
+        const authReq = await fetchRequestObject(decodeURIComponent(requestUri));
+        plog('ok', 'Authorization Request received');
+        plog('info', 'Verifier: ' + (authReq.client_id || clientId));
+
+        // 3. Parse DCQL query
+        const credQuery = authReq.dcql_query?.credentials?.[0];
+        if (!credQuery) {
+            showFlowError('No credential query in authorization request');
+            return;
+        }
+        const vctValues = credQuery.meta?.vct_values ?? [];
+        const requestedClaims = (credQuery.claims ?? []).map(c => c.path[0]);
+        plog('info', 'Requested VCT: ' + vctValues.join(', '));
+        plog('info', 'Requested claims: ' + requestedClaims.join(', '));
+
+        // 4. Find matching credential
+        updateFlowStatus('Searching for matching credential...');
+        const allCreds = await getAllCredentials();
+        const matching = allCreds.find(c =>
+            vctValues.length === 0 || vctValues.includes(c.vct),
+        );
+
+        if (!matching) {
+            showFlowError('No matching credential found for type: ' + vctValues.join(', '));
+            return;
+        }
+        plog('ok', 'Found matching credential: ' + getCredentialDisplayName(matching));
+
+        // 5. Show presentation consent
+        const accepted = await showPresentationConsent(
+            matching, requestedClaims, authReq.client_id || clientId,
+        );
+
+        if (!accepted) {
+            plog('info', 'User declined presentation');
+            showScreen('wallet');
+            return;
+        }
+
+        // 6. Build VP Token
+        showFlowPhase('processing');
+        updateFlowStatus('Building VP Token...');
+        const vpToken = await buildVpToken(
+            matching, requestedClaims, authReq.nonce, authReq.client_id || clientId,
+        );
+        plog('ok', 'VP Token built (' + vpToken.length + ' bytes)');
+
+        // 7. Submit to verifier
+        updateFlowStatus('Sending presentation to verifier...');
+        const res = await submitPresentation(authReq.response_uri, vpToken, authReq.state);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({} as Record<string, string>));
+            throw new Error('Presentation submission failed: ' + ((err as Record<string, string>).error_description || (err as Record<string, string>).error || res.status));
+        }
+        plog('ok', 'Presentation submitted successfully');
+
+        // 8. Log activity + show success
+        await logActivity('Credential presented', getCredentialDisplayName(matching), authReq.client_id || clientId, 'presented');
+        await renderActivity();
+        updateFlowStatus('Presentation complete!');
+
+        // Return to wallet after brief delay
+        setTimeout(() => showScreen('wallet'), 1500);
+
+    } catch (err) {
+        showFlowError(err instanceof Error ? err.message : 'Presentation failed');
+    }
+}
+
+function showPresentationConsent(
+    credential: StoredCredential,
+    requestedClaims: string[],
+    verifierClientId: string,
+): Promise<boolean> {
+    return new Promise((resolve) => {
+        consentResolve = resolve;
+        showFlowPhase('consent');
+
+        // Update consent title for presentation context
+        const consentTitle = document.querySelector('#flow-consent h2');
+        if (consentTitle) consentTitle.textContent = 'Share Credential';
+        const consentSub = document.querySelector('#flow-consent .flow-sub');
+        if (consentSub) consentSub.textContent = 'A verifier is requesting the following claims from your credential.';
+
+        // Show verifier info
+        $('consent-issuer').innerHTML = `
+            <div class="consent-issuer-info">
+                <strong>${esc(getCredentialDisplayName(credential))}</strong>
+                <span>${esc(verifierClientId)}</span>
+            </div>`;
+
+        // Show requested claims with current values
+        const requested = new Set(requestedClaims);
+        let html = '';
+        for (const [key, value] of Object.entries(credential.claims)) {
+            if (!requested.has(key)) continue;
+            html += `<div class="consent-claim">
+                <span class="consent-claim-label">${esc(getClaimLabel(key))}</span>
+                <span class="consent-claim-value">${esc(formatClaimValue(key, value))}</span>
+            </div>`;
+        }
+        $('consent-claims').innerHTML = html;
+
+        // Update button text
+        $('btn-consent-accept').textContent = 'Share';
+        $('btn-consent-reject').textContent = 'Decline';
+    });
+}
+
 function handleOfferUri(uri: string): void {
     plog('info', 'QR/URI received: ' + uri.substring(0, 120) + (uri.length > 120 ? '...' : ''));
+
+    // OID4VP presentation request
+    if (uri.startsWith('openid4vp://')) {
+        handlePresentationRequest(uri);
+        return;
+    }
+
     const search = uri.includes('?') ? uri.substring(uri.indexOf('?')) : '';
     const params = new URLSearchParams(search);
     const offerData = parseCredentialOfferFromUrl(params);

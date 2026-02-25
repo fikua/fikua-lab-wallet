@@ -201,3 +201,35 @@ export interface TokenRequestOptions {
 export interface CredentialRequestOptions {
     dpopProof?: string;
 }
+
+// =========================================================================
+// OID4VP Protocol Types
+// =========================================================================
+
+export interface Oid4vpAuthorizationRequest {
+    response_type: string;
+    client_id: string;
+    response_mode: string;
+    response_uri: string;
+    nonce: string;
+    state: string;
+    dcql_query?: DcqlQuery;
+    client_metadata?: Record<string, unknown>;
+}
+
+export interface DcqlQuery {
+    credentials: DcqlCredentialQuery[];
+}
+
+export interface DcqlCredentialQuery {
+    id: string;
+    format: string;
+    meta?: { vct_values?: string[] };
+    claims?: DcqlClaimQuery[];
+}
+
+export interface DcqlClaimQuery {
+    path: string[];
+    values?: string[];
+    essential?: boolean;
+}
