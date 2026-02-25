@@ -666,6 +666,7 @@ async function executeAuthCodeFlow(
     } else {
         authorizeUrl += '?response_type=code&client_id=' + encodeURIComponent(clientId)
             + '&redirect_uri=' + encodeURIComponent(redirectUri)
+            + '&scope=' + encodeURIComponent(configId)
             + '&state=' + state
             + '&code_challenge=' + pkce.code_challenge
             + '&code_challenge_method=S256';
