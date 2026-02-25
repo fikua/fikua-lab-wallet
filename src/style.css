@@ -872,6 +872,8 @@ h1, h2, h3 { color: var(--heading); line-height: 1.3; }
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    max-height: 60vh;
+    overflow-y: auto;
 }
 
 .add-credential-item {

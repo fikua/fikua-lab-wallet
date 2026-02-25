@@ -266,6 +266,10 @@ const CLAIM_LABELS: Record<string, string> = {
 
 function getCredentialDisplayName(cred: StoredCredential): string {
     if (cred.credentialConfigId) {
+        if (cred.credentialConfigId.includes('student-id')) return 'Student ID';
+        if (cred.credentialConfigId.includes('mDL')) return 'mDL';
+        if (cred.credentialConfigId.includes('pid.mdoc')) return 'PID mdoc';
+        if (cred.credentialConfigId.includes('pid')) return 'PID';
         const parts = cred.credentialConfigId.split('.');
         const last = parts[parts.length - 1];
         if (last === '1' && parts.length > 1) return parts[parts.length - 2].toUpperCase();
@@ -625,7 +629,7 @@ async function executeAuthCodeFlow(
             client_id: clientId,
             redirect_uri: redirectUri,
             response_type: 'code',
-            scope: 'openid',
+            scope: configId,
             state,
             code_challenge: pkce.code_challenge,
             code_challenge_method: 'S256',
