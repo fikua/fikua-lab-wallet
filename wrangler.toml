@@ -1,14 +1,18 @@
-# Cloudflare Workers (Static Assets) configuration.
-# This project is the only lab frontend with a build step (Vite + PWA);
-# the Workers project must run `npm ci && npm run build` and publish the
-# `dist/` directory.
+# Cloudflare Worker (Static Assets + handler) configuration.
+#
+# Only frontend with a build step (Vite + PWA); the Workers project runs
+# `npm ci && npm run build` and serves dist/. A Worker function in
+# src/worker/index.ts proxies OID4VC / .well-known / oid4vp paths to the
+# Fikua Lab backend (api.lab.fikua.com).
 
 name = "fikua-lab-wallet"
+main = "src/worker/index.ts"
 compatibility_date = "2026-05-22"
 
 [assets]
 directory = "./dist"
-# SPA: any unknown route falls back to index.html (vite-plugin-pwa
+binding = "ASSETS"
+# SPA: any unknown asset falls back to index.html (vite-plugin-pwa
 # also uses this as navigateFallback so the service worker keeps the
 # routing consistent).
 not_found_handling = "single-page-application"
