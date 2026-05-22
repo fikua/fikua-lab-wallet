@@ -68,6 +68,23 @@ export default {
         // Static asset lookup: strip the role prefix so /<role>/foo.css
         // hits dist/foo.css instead of dist/<role>/foo.css.
         const rewritten = new URL(relative + url.search, url.origin);
-        return env.ASSETS.fetch(new Request(rewritten, request));
+        const response = await env.ASSETS.fetch(new Request(rewritten, request));
+
+        // Workers Static Assets emits a directory-canonical 301/307 to
+        // /<dir>/ when you hit /<dir>. Re-prepend the role prefix so
+        // the browser stays inside the wallet namespace.
+        if (response.status === 301 || response.status === 307 || response.status === 308) {
+            const loc = response.headers.get("location");
+            if (loc && loc.startsWith("/") && !loc.startsWith(ROLE_PREFIX + "/") && loc !== ROLE_PREFIX) {
+                const newHeaders = new Headers(response.headers);
+                newHeaders.set("location", ROLE_PREFIX + loc);
+                return new Response(response.body, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: newHeaders,
+                });
+            }
+        }
+        return response;
     },
 };
