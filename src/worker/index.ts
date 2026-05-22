@@ -18,7 +18,9 @@ export interface Env {
 const ROLE_PREFIX = '/wallet';
 
 const BACKEND_PREFIXES = [
-    '/.well-known/ /oid4vci/ /oid4vp/',
+    '/.well-known/',
+    '/oid4vci/',
+    '/oid4vp/',
 ];
 
 function matchesBackend(relativePath: string): boolean {
