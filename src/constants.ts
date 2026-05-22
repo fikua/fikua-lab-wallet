@@ -1,5 +1,6 @@
-export const ISSUER_BASE = 'https://issuer.lab.fikua.com';
-export const WALLET_BASE = location.origin;
+export const ISSUER_BASE = 'https://lab.fikua.com/issuer';
+// The wallet PWA is mounted at /wallet/ under lab.fikua.com.
+export const WALLET_BASE = location.origin + '/wallet';
 
 export const DB_NAME = 'fikua-wallet';
 export const DB_VERSION = 1;

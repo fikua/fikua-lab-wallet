@@ -1,42 +1,59 @@
 /**
- * Cloudflare Worker for wallet.lab.fikua.com.
+ * Cloudflare Worker for lab.fikua.com/wallet/*.
  *
- * Proxies API paths to https://api.lab.fikua.com (the Fikua Lab backend on
- * the VPS, fronted by Traefik). Everything else falls through to the
- * static asset binding.
+ * Serves the static UI for any non-API path. For API paths the role
+ * prefix is stripped and the request is forwarded to the lab backend at
+ * https://lab-backend.fikua.com (Cloudflare Tunnel + Access Service
+ * Auth), attaching the CF-Access service-token headers so the Access
+ * policy lets it through.
  */
 
 export interface Env {
     ASSETS: Fetcher;
+    LAB_BACKEND_ORIGIN: string;
+    CF_ACCESS_CLIENT_ID: string;
+    CF_ACCESS_CLIENT_SECRET: string;
 }
 
-const BACKEND_ORIGIN = 'https://api.lab.fikua.com';
+const ROLE_PREFIX = '/wallet';
 
-const BACKEND_PREFIXES = ["/.well-known/", "/oid4vci/", "/oid4vp/", "/health"];
+const BACKEND_PREFIXES = [
+    '/.well-known/ /oid4vci/ /oid4vp/',
+];
 
-function isBackendPath(pathname: string): boolean {
+function matchesBackend(relativePath: string): boolean {
     return BACKEND_PREFIXES.some((p) =>
-        p.endsWith('/') ? pathname.startsWith(p) : pathname === p || pathname.startsWith(p + '/'),
+        p.endsWith('/')
+            ? relativePath.startsWith(p)
+            : relativePath === p || relativePath.startsWith(p + '/'),
     );
 }
 
-async function proxyToBackend(request: Request): Promise<Response> {
+async function proxyToBackend(request: Request, env: Env, relativePath: string): Promise<Response> {
     const url = new URL(request.url);
-    const upstream = new URL(BACKEND_ORIGIN + url.pathname + url.search);
-    const init: RequestInit = {
+    const upstream = new URL(relativePath + url.search, env.LAB_BACKEND_ORIGIN);
+    const headers = new Headers(request.headers);
+    headers.set('CF-Access-Client-Id', env.CF_ACCESS_CLIENT_ID);
+    headers.set('CF-Access-Client-Secret', env.CF_ACCESS_CLIENT_SECRET);
+    return fetch(upstream.toString(), {
         method: request.method,
-        headers: request.headers,
-        body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.clone().arrayBuffer(),
+        headers,
+        body: ['GET', 'HEAD'].includes(request.method)
+            ? undefined
+            : await request.clone().arrayBuffer(),
         redirect: 'manual',
-    };
-    return fetch(upstream.toString(), init);
+    });
 }
 
 export default {
     async fetch(request: Request, env: Env): Promise<Response> {
         const url = new URL(request.url);
-        if (isBackendPath(url.pathname)) {
-            return proxyToBackend(request);
+        const relative = url.pathname.startsWith(ROLE_PREFIX)
+            ? url.pathname.slice(ROLE_PREFIX.length) || '/'
+            : url.pathname;
+
+        if (matchesBackend(relative)) {
+            return proxyToBackend(request, env, relative);
         }
         return env.ASSETS.fetch(request);
     },

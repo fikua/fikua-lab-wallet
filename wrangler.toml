@@ -1,18 +1,31 @@
 # Cloudflare Worker (Static Assets + handler) configuration.
 #
-# Only frontend with a build step (Vite + PWA); the Workers project runs
-# `npm ci && npm run build` and serves dist/. A Worker function in
-# src/worker/index.ts proxies OID4VC / .well-known / oid4vp paths to the
-# Fikua Lab backend (api.lab.fikua.com).
+# The wallet PWA (Vite + vite-plugin-pwa) is served at
+# https://lab.fikua.com/wallet/*. The Worker function in
+# src/worker/index.ts strips the /wallet prefix and forwards OID4VC /
+# .well-known / oid4vp paths to the lab backend at
+# https://lab-backend.fikua.com (Cloudflare Tunnel + Access Service
+# Auth). See ADR 0008r1 (v4).
 
 name = "fikua-lab-wallet"
 main = "src/worker/index.ts"
 compatibility_date = "2026-05-22"
 
+routes = [
+    { pattern = "lab.fikua.com/wallet/*", custom_domain = false, zone_name = "fikua.com" }
+]
+
 [assets]
 directory = "./dist"
 binding = "ASSETS"
-# SPA: any unknown asset falls back to index.html (vite-plugin-pwa
-# also uses this as navigateFallback so the service worker keeps the
-# routing consistent).
+# SPA fallback: any unknown asset returns index.html so the client-side
+# router and the vite-plugin-pwa service worker keep their navigation
+# consistent.
 not_found_handling = "single-page-application"
+
+# Backend reach (see ADR 0008r1):
+#   LAB_BACKEND_ORIGIN     — plain var, the hostname Workers fetch().
+#   CF_ACCESS_CLIENT_ID    — secret (wrangler secret put).
+#   CF_ACCESS_CLIENT_SECRET — secret (wrangler secret put).
+[vars]
+LAB_BACKEND_ORIGIN = "https://lab-backend.fikua.com"
