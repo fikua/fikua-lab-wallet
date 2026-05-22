@@ -12,6 +12,7 @@ main = "src/worker/index.ts"
 compatibility_date = "2026-05-22"
 
 routes = [
+    { pattern = "lab.fikua.com/wallet", custom_domain = false, zone_name = "fikua.com" },
     { pattern = "lab.fikua.com/wallet/*", custom_domain = false, zone_name = "fikua.com" }
 ]
 
