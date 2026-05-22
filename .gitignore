@@ -1,0 +1,25 @@
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Vitest
+coverage/
+
+# Wrangler
+.wrangler/
+.dev.vars
