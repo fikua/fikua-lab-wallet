@@ -399,8 +399,10 @@ export async function buildVpToken(
         credential.rawSdJwt, requestedClaims,
     );
 
-    // Build the SD-JWT without KB-JWT (for sd_hash calculation)
-    const sdJwtWithoutKb = issuerJwt + '~' + disclosures.join('~') + '~';
+    // Build the SD-JWT without KB-JWT (for sd_hash calculation). Each
+    // disclosure is followed by a '~'; with zero disclosures this is just
+    // "<issuer-jwt>~" (not "<issuer-jwt>~~", which is malformed).
+    const sdJwtWithoutKb = issuerJwt + '~' + disclosures.map(d => d + '~').join('');
 
     // Compute sd_hash = base64url(SHA-256(sd-jwt-without-kb-jwt))
     const hash = await sha256(sdJwtWithoutKb);

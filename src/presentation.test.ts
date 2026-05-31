@@ -191,6 +191,35 @@ describe('buildVpToken', () => {
         expect(disc[1]).toBe('given_name');
         expect(disc[2]).toBe('Oriol');
     });
+
+    it('produces issuer-jwt~kb-jwt (no double tilde) when no claims requested', async () => {
+        const keyPair = await crypto.subtle.generateKey(
+            { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify'],
+        );
+        const sdJwt = buildTestSdJwt([
+            ['salt1', 'given_name', 'Oriol'],
+            ['salt2', 'family_name', 'Canadés'],
+        ]);
+        const credential = {
+            id: 'test-id', rawSdJwt: sdJwt, format: 'dc+sd-jwt',
+            issuer: 'https://issuer.example.com', issuerName: 'Test Issuer',
+            credentialConfigId: 'pid', vct: 'eu.europa.ec.eudi.pid.1',
+            claims: { given_name: 'Oriol', family_name: 'Canadés' },
+            metadata: { alg: 'ES256', issuedAt: null, expiresAt: null, notificationId: null, notificationEndpoint: null },
+            accessToken: 'token', tokenType: 'Bearer', holderKey: keyPair, issuedAt: Date.now(),
+        };
+
+        const { buildVpToken } = await import('./protocol');
+        // No requested claims → zero disclosures.
+        const vpToken = await buildVpToken(credential, [], 'nonce', 'verifier.example.com');
+
+        expect(vpToken).not.toContain('~~'); // must NOT have an empty disclosure segment
+        // Shape is exactly issuer-jwt ~ kb-jwt (one tilde, two segments).
+        const parts = vpToken.split('~');
+        expect(parts).toHaveLength(2);
+        expect(parts[0].split('.')).toHaveLength(3); // issuer JWT
+        expect(parts[1].split('.')).toHaveLength(3); // KB-JWT
+    });
 });
 
 describe('fetchRequestObject', () => {
