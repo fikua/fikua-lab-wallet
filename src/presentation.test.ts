@@ -193,6 +193,68 @@ describe('buildVpToken', () => {
     });
 });
 
+describe('fetchRequestObject', () => {
+    // Throwaway self-signed P-256 cert + matching PKCS8 key (not a real key).
+    const TEST_PKCS8 = '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgv7fMQCbiQdg8P0Ia\nWDl48n//nxpgWzV69/dE6q4xjKahRANCAAQw77Oi+7SEHX70xbUaD5kgyrv9tTyR\nGzjZpcjC5e4fXjTkp3Om/wdug2Lfte+j/WOaF59DcXRIGOLqD15iQVFr\n-----END PRIVATE KEY-----\n';
+    const TEST_X5C = 'MIIBhDCCASugAwIBAgIUcf06uF4G5kWF1SsSSlJwUPfhoIswCgYIKoZIzj0EAwIwGDEWMBQGA1UEAwwNdGVzdC12ZXJpZmllcjAeFw0yNjA1MzExNjU4MzhaFw0zNjA1MjgxNjU4MzhaMBgxFjAUBgNVBAMMDXRlc3QtdmVyaWZpZXIwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQw77Oi+7SEHX70xbUaD5kgyrv9tTyRGzjZpcjC5e4fXjTkp3Om/wdug2Lfte+j/WOaF59DcXRIGOLqD15iQVFro1MwUTAdBgNVHQ4EFgQUsh3g38anbSgXjQlEB5Pr7AryL54wHwYDVR0jBBgwFoAUsh3g38anbSgXjQlEB5Pr7AryL54wDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNHADBEAiA+dl3cdSFe8exczXWzJwiIxiT3QjT+FD1jTiySnpggewIgPAG+53ez88cwsoajlvpVftTVW5p/TfB5+DH5rm3bq84=';
+
+    beforeEach(() => { vi.restoreAllMocks(); });
+
+    const signJws = async (key: CryptoKey, claims: object): Promise<string> => {
+        const { CompactSign } = await import('jose');
+        const payload = Uint8Array.from(new TextEncoder().encode(JSON.stringify(claims)));
+        return new CompactSign(payload)
+            .setProtectedHeader({ alg: 'ES256', typ: 'oauth-authz-req+jwt', x5c: [TEST_X5C] })
+            .sign(key);
+    };
+
+    it('verifies a signed JAR (x5c) and extracts the request parameters', async () => {
+        const { importPKCS8 } = await import('jose');
+        const key = await importPKCS8(TEST_PKCS8, 'ES256');
+        const jws = await signJws(key, {
+            response_type: 'vp_token',
+            response_uri: 'https://verifier.test/response',
+            nonce: 'nonce-1',
+            response_mode: 'direct_post.jwt',
+        });
+
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+            new Response(jws, { status: 200, headers: { 'Content-Type': 'application/oauth-authz-req+jwt' } }),
+        ));
+
+        const { fetchRequestObject } = await import('./protocol');
+        const req = await fetchRequestObject('https://verifier.test/request/1');
+        expect(req.response_type).toBe('vp_token');
+        expect(req.nonce).toBe('nonce-1');
+        expect(req.response_uri).toBe('https://verifier.test/response');
+    });
+
+    it('rejects a JAR whose signature does not match the x5c cert', async () => {
+        const { generateKeyPair } = await import('jose');
+        const { privateKey } = await generateKeyPair('ES256'); // a different key than TEST_X5C
+        const jws = await signJws(privateKey as CryptoKey, {
+            response_type: 'vp_token', response_uri: 'https://verifier.test/r', nonce: 'n',
+        });
+
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(jws, { status: 200 })));
+
+        const { fetchRequestObject } = await import('./protocol');
+        await expect(fetchRequestObject('https://verifier.test/request/2')).rejects.toThrow();
+    });
+
+    it('still accepts a plain-JSON request object', async () => {
+        const json = JSON.stringify({
+            response_type: 'vp_token', response_uri: 'https://verifier.test/r', nonce: 'n',
+        });
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+            new Response(json, { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        ));
+        const { fetchRequestObject } = await import('./protocol');
+        const req = await fetchRequestObject('https://verifier.test/request/3');
+        expect(req.nonce).toBe('n');
+    });
+});
+
 describe('submitPresentation', () => {
     beforeEach(() => {
         vi.restoreAllMocks();

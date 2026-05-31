@@ -17,7 +17,7 @@ import type {
     StoredCredential,
 } from './types';
 import { filterDisclosuresForPresentation } from './sdjwt';
-import { CompactEncrypt, importJWK, type JWK } from 'jose';
+import { CompactEncrypt, importJWK, importX509, compactVerify, type JWK } from 'jose';
 
 // =========================================================================
 // Credential Offer
@@ -309,20 +309,80 @@ export function getPreAuthTxCode(grant: GrantInfo): PreAuthGrant['tx_code'] | un
 // OID4VP — Presentation
 // =========================================================================
 
-/** Fetch the Authorization Request (Request Object) from the verifier. */
+/**
+ * Fetch the Authorization Request (Request Object) from the verifier.
+ *
+ * HAIP (request_method=request_uri_signed) serves a signed JAR: a compact JWS
+ * (typ=oauth-authz-req+jwt) whose payload is the request parameters, with the
+ * verifier's signing cert chain in the x5c header. We verify the JWS against
+ * the leaf certificate in x5c and read the parameters from the payload. A
+ * plain-JSON request object is still accepted for non-signed flows.
+ */
 export async function fetchRequestObject(requestUri: string): Promise<Oid4vpAuthorizationRequest> {
     const res = await fetch(requestUri, {
-        headers: { 'Accept': 'application/json' },
+        headers: { 'Accept': 'application/oauth-authz-req+jwt, application/json' },
     });
     if (!res.ok) throw new Error('Failed to fetch request object: ' + res.status);
-    const authReq: Oid4vpAuthorizationRequest = await res.json();
+
+    const text = (await res.text()).trim();
+
+    let authReq: Oid4vpAuthorizationRequest;
+    if (isCompactJws(text)) {
+        authReq = await verifySignedRequestObject(text);
+    } else {
+        authReq = JSON.parse(text) as Oid4vpAuthorizationRequest;
+    }
+
     if (authReq.response_type !== 'vp_token') {
         throw new Error('Unsupported response_type: ' + authReq.response_type);
     }
-    if (!authReq.response_uri || !authReq.nonce || !authReq.state) {
+    // state is optional in OID4VP 1.0 Final; only response_uri and nonce are required.
+    if (!authReq.response_uri || !authReq.nonce) {
         throw new Error('Missing required fields in authorization request');
     }
     return authReq;
+}
+
+/** True for a compact JWS (three base64url segments separated by dots). */
+function isCompactJws(s: string): boolean {
+    const parts = s.split('.');
+    return parts.length === 3 && parts.every(p => /^[A-Za-z0-9_-]+$/.test(p));
+}
+
+/**
+ * Verify a signed request object (JAR) against the leaf certificate in its x5c
+ * header and return the request parameters from the payload. Throws if the x5c
+ * is absent or the signature does not verify.
+ */
+async function verifySignedRequestObject(jws: string): Promise<Oid4vpAuthorizationRequest> {
+    const protectedHeader = JSON.parse(
+        new TextDecoder().decode(base64urlToBytes(jws.split('.')[0])),
+    ) as { x5c?: string[]; alg?: string };
+
+    const x5c = protectedHeader.x5c;
+    if (!x5c || x5c.length === 0) {
+        throw new Error('Signed request object has no x5c certificate');
+    }
+
+    // jose's importX509 expects a PEM; wrap the base64 DER from x5c[0] (leaf).
+    const leafPem = derToPem(x5c[0]);
+    const leafKey = await importX509(leafPem, protectedHeader.alg ?? 'ES256');
+
+    const { payload } = await compactVerify(jws, leafKey);
+    return JSON.parse(new TextDecoder().decode(payload)) as Oid4vpAuthorizationRequest;
+}
+
+/** Decode a base64url segment to bytes. */
+function base64urlToBytes(s: string): Uint8Array {
+    const b64 = s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '=');
+    const bin = atob(b64);
+    return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+/** Wrap a base64 DER certificate (x5c entry) as a PEM string. */
+function derToPem(b64der: string): string {
+    const lines = b64der.match(/.{1,64}/g)?.join('\n') ?? b64der;
+    return `-----BEGIN CERTIFICATE-----\n${lines}\n-----END CERTIFICATE-----`;
 }
 
 /**
@@ -378,7 +438,8 @@ export async function submitPresentation(
         const jwe = await encryptAuthorizationResponse(authReq, vpToken);
         body = new URLSearchParams({ response: jwe });
     } else {
-        body = new URLSearchParams({ vp_token: vpToken, state });
+        body = new URLSearchParams({ vp_token: vpToken });
+        if (state) body.set('state', state); // state is optional in OID4VP 1.0 Final
     }
 
     return fetch(responseUri, {
@@ -409,9 +470,11 @@ async function encryptAuthorizationResponse(
     }
     const recipientKey = await importJWK(recipientJwk, alg);
 
-    const payload = Uint8Array.from(
-        new TextEncoder().encode(JSON.stringify({ vp_token: vpToken, state: authReq.state })),
-    );
+    // state is optional (omitted by the suite's happy flow); only include it
+    // when present so we don't send a literal "state": null.
+    const responseObj: Record<string, string> = { vp_token: vpToken };
+    if (authReq.state) responseObj.state = authReq.state;
+    const payload = Uint8Array.from(new TextEncoder().encode(JSON.stringify(responseObj)));
 
     const header: Record<string, unknown> = { alg, enc };
     if (recipientJwk.kid) header.kid = recipientJwk.kid;
