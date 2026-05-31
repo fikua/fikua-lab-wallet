@@ -2,6 +2,10 @@ export const ISSUER_BASE = 'https://lab.fikua.com/issuer';
 // The wallet PWA is mounted at /wallet/ under lab.fikua.com.
 export const WALLET_BASE = location.origin + '/wallet';
 
+// Wallet Provider (Fikua Lab) — issues the Wallet Instance Attestation. The
+// wallet requests a WP-signed WIA here; falls back to self-signed if offline.
+export const WALLET_PROVIDER_BASE = 'https://lab.fikua.com/wallet-provider';
+
 export const DB_NAME = 'fikua-wallet';
 export const DB_VERSION = 1;
 export const STORE_CREDENTIALS = 'credentials';

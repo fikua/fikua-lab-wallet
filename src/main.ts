@@ -18,7 +18,7 @@ import {
     fetchIssuerMetadata, fetchAuthServerMetadata,
     analyzeGrant, requestToken, requestNonce,
     buildProofJwt, requestCredential, sendNotification,
-    buildDpopProof, generateWia, generateWiaPop,
+    buildDpopProof, obtainWia, generateWiaPop,
     pushAuthorizationRequest, getPreAuthCode, getPreAuthTxCode,
     fetchRequestObject, buildVpToken, submitPresentation,
 } from './protocol';
@@ -643,7 +643,7 @@ async function executeAuthCodeFlow(
         let popJwt: string | undefined;
         if (isHaip && dpopKeyPair && wiaKeyPair) {
             dpopProofPar = await buildDpopProof(dpopKeyPair, 'POST', parEndpoint);
-            wiaJwt = await generateWia(wiaKeyPair, clientId);
+            wiaJwt = await obtainWia(wiaKeyPair, clientId);
             popJwt = await generateWiaPop(wiaKeyPair, clientId, issuerUrl);
         }
         const parResponse = await pushAuthorizationRequest(parEndpoint, parParams, dpopProofPar, wiaJwt, popJwt);
@@ -706,7 +706,7 @@ async function handleAuthCallback(params: URLSearchParams): Promise<boolean> {
         const tokenOptions: { dpopProof?: string; wiaJwt?: string; popJwt?: string } = {};
         if (flowState.isHaip && dpopKeyPair && wiaKeyPair) {
             tokenOptions.dpopProof = await buildDpopProof(dpopKeyPair, 'POST', flowState.authMeta.token_endpoint);
-            tokenOptions.wiaJwt = await generateWia(wiaKeyPair, flowState.clientId);
+            tokenOptions.wiaJwt = await obtainWia(wiaKeyPair, flowState.clientId);
             tokenOptions.popJwt = await generateWiaPop(wiaKeyPair, flowState.clientId, flowState.issuerUrl);
         }
         const tokenResponse = await requestToken(flowState.authMeta.token_endpoint, tokenParams, tokenOptions);
