@@ -679,6 +679,13 @@ async function executeAuthCodeFlow(
             + '&state=' + state
             + '&code_challenge=' + pkce.code_challenge
             + '&code_challenge_method=S256';
+        // Issuer-initiated: forward issuer_state so the issuer resolves the
+        // already-prepared issuance (its issuanceRecordId) and skips the
+        // identification step — the issuer already has the subject's data.
+        // Without this, the non-PAR /authorize sees no issuer_state and falls
+        // back to the wallet-initiated identify redirect.
+        const issuerState = (grant.data as AuthCodeGrant).issuer_state;
+        if (issuerState) authorizeUrl += '&issuer_state=' + encodeURIComponent(issuerState);
     }
     window.location.href = authorizeUrl;
 }
