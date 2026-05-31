@@ -995,6 +995,14 @@ async function handlePresentationRequest(uri: string): Promise<void> {
         plog('ok', 'Authorization Request received');
         plog('info', 'Verifier: ' + (authReq.client_id || clientId));
 
+        // 2b. The client_id in the outer authorization request parameters MUST
+        // match the client_id inside the signed request object (OID4VP §5).
+        // Reject the request on mismatch — do not present.
+        if (clientId && authReq.client_id && clientId !== authReq.client_id) {
+            showFlowError('Rejected: client_id in the request does not match the signed request object');
+            return;
+        }
+
         // 3. Parse DCQL query
         const credQuery = authReq.dcql_query?.credentials?.[0];
         if (!credQuery) {
