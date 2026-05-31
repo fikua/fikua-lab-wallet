@@ -1033,10 +1033,12 @@ async function handlePresentationRequest(uri: string): Promise<void> {
         // 6. Build VP Token
         showFlowPhase('processing');
         updateFlowStatus('Building VP Token...');
-        const vpToken = await buildVpToken(
+        const presentation = await buildVpToken(
             matching, requestedClaims, authReq.nonce, authReq.client_id || clientId,
         );
-        plog('ok', 'VP Token built (' + vpToken.length + ' bytes)');
+        // OID4VP 1.0 Final with DCQL: vp_token is keyed by the DCQL credential id.
+        const vpToken = { [credQuery.id]: presentation };
+        plog('ok', 'VP Token built (' + presentation.length + ' bytes)');
 
         // 7. Submit to verifier
         updateFlowStatus('Sending presentation to verifier...');

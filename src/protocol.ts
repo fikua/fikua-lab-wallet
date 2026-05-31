@@ -429,7 +429,7 @@ export async function buildVpToken(
  */
 export async function submitPresentation(
     authReq: Oid4vpAuthorizationRequest,
-    vpToken: string,
+    vpToken: Record<string, string>,
 ): Promise<Response> {
     const { response_uri: responseUri, state, response_mode: responseMode } = authReq;
 
@@ -438,7 +438,9 @@ export async function submitPresentation(
         const jwe = await encryptAuthorizationResponse(authReq, vpToken);
         body = new URLSearchParams({ response: jwe });
     } else {
-        body = new URLSearchParams({ vp_token: vpToken });
+        // OID4VP 1.0 Final with DCQL: vp_token is a JSON object keyed by the
+        // DCQL credential id, serialized into the form param.
+        body = new URLSearchParams({ vp_token: JSON.stringify(vpToken) });
         if (state) body.set('state', state); // state is optional in OID4VP 1.0 Final
     }
 
@@ -458,7 +460,7 @@ export async function submitPresentation(
  */
 async function encryptAuthorizationResponse(
     authReq: Oid4vpAuthorizationRequest,
-    vpToken: string,
+    vpToken: Record<string, string>,
 ): Promise<string> {
     const metadata = authReq.client_metadata ?? {};
     const alg = (metadata.authorization_encrypted_response_alg as string) ?? 'ECDH-ES';
@@ -470,9 +472,9 @@ async function encryptAuthorizationResponse(
     }
     const recipientKey = await importJWK(recipientJwk, alg);
 
-    // state is optional (omitted by the suite's happy flow); only include it
-    // when present so we don't send a literal "state": null.
-    const responseObj: Record<string, string> = { vp_token: vpToken };
+    // vp_token is a DCQL-keyed JSON object (OID4VP 1.0 Final §8.1). state is
+    // optional (omitted by the happy flow); only include it when present.
+    const responseObj: Record<string, unknown> = { vp_token: vpToken };
     if (authReq.state) responseObj.state = authReq.state;
     const payload = Uint8Array.from(new TextEncoder().encode(JSON.stringify(responseObj)));
 
