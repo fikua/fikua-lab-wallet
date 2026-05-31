@@ -1050,10 +1050,21 @@ async function handlePresentationRequest(uri: string): Promise<void> {
         }
         plog('ok', 'Presentation submitted successfully');
 
+        // The verifier MAY return a redirect_uri in the response JSON (OID4VP
+        // §8.2). When present, the wallet MUST send the user agent there.
+        const responseBody = await res.json().catch(() => ({} as Record<string, string>));
+        const redirectUri = (responseBody as Record<string, string>).redirect_uri;
+
         // 8. Log activity + show success
         await logActivity('Credential presented', getCredentialDisplayName(matching), authReq.client_id || clientId, 'presented');
         await renderActivity();
         updateFlowStatus('Presentation complete!');
+
+        if (redirectUri) {
+            plog('ok', 'Verifier returned redirect_uri, navigating there');
+            window.location.assign(redirectUri);
+            return;
+        }
 
         // Return to wallet after brief delay
         setTimeout(() => showScreen('wallet'), 1500);
