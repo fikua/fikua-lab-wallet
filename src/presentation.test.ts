@@ -192,3 +192,62 @@ describe('buildVpToken', () => {
         expect(disc[2]).toBe('Oriol');
     });
 });
+
+describe('submitPresentation', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('direct_post sends vp_token and state as plaintext form params', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const { submitPresentation } = await import('./protocol');
+        await submitPresentation({
+            response_type: 'vp_token', client_id: 'verifier', response_mode: 'direct_post',
+            response_uri: 'https://verifier.test/response', nonce: 'n', state: 'st',
+        }, 'vptoken~kb');
+
+        const [, init] = fetchMock.mock.calls[0];
+        const body = new URLSearchParams(init.body as string);
+        expect(body.get('vp_token')).toBe('vptoken~kb');
+        expect(body.get('state')).toBe('st');
+        expect(body.get('response')).toBeNull();
+    });
+
+    it('direct_post.jwt encrypts an Authorization Response the verifier can decrypt', async () => {
+        const { generateKeyPair, exportJWK, compactDecrypt } = await import('jose');
+        const { publicKey, privateKey } = await generateKeyPair('ECDH-ES', { extractable: true });
+        const publicJwk = await exportJWK(publicKey);
+        publicJwk.kid = 'verifier-enc-1';
+        publicJwk.use = 'enc';
+
+        const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const { submitPresentation } = await import('./protocol');
+        await submitPresentation({
+            response_type: 'vp_token', client_id: 'verifier', response_mode: 'direct_post.jwt',
+            response_uri: 'https://verifier.test/response', nonce: 'n', state: 'st-123',
+            client_metadata: {
+                authorization_encrypted_response_alg: 'ECDH-ES',
+                authorization_encrypted_response_enc: 'A128GCM',
+                jwks: { keys: [publicJwk] },
+            },
+        }, 'theVpToken~kb');
+
+        const [, init] = fetchMock.mock.calls[0];
+        const body = new URLSearchParams(init.body as string);
+        const jwe = body.get('response');
+        expect(jwe).toBeTruthy();
+        expect(body.get('vp_token')).toBeNull();
+
+        // The verifier decrypts the JWE and recovers vp_token + state.
+        const { plaintext, protectedHeader } = await compactDecrypt(jwe as string, privateKey);
+        expect(protectedHeader.alg).toBe('ECDH-ES');
+        expect(protectedHeader.enc).toBe('A128GCM');
+        const decoded = JSON.parse(new TextDecoder().decode(plaintext));
+        expect(decoded.vp_token).toBe('theVpToken~kb');
+        expect(decoded.state).toBe('st-123');
+    });
+});

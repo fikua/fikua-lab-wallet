@@ -1040,7 +1040,7 @@ async function handlePresentationRequest(uri: string): Promise<void> {
 
         // 7. Submit to verifier
         updateFlowStatus('Sending presentation to verifier...');
-        const res = await submitPresentation(authReq.response_uri, vpToken, authReq.state);
+        const res = await submitPresentation(authReq, vpToken);
         if (!res.ok) {
             const err = await res.json().catch(() => ({} as Record<string, string>));
             throw new Error('Presentation submission failed: ' + ((err as Record<string, string>).error_description || (err as Record<string, string>).error || res.status));

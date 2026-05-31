@@ -21,6 +21,7 @@
         "wrangler": "^3.114.1"
     },
     "dependencies": {
+        "jose": "^5.10.0",
         "qr-scanner": "^1.4.2"
     }
 }

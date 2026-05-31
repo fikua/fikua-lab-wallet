@@ -17,6 +17,7 @@ import type {
     StoredCredential,
 } from './types';
 import { filterDisclosuresForPresentation } from './sdjwt';
+import { CompactEncrypt, importJWK, type JWK } from 'jose';
 
 // =========================================================================
 // Credential Offer
@@ -358,15 +359,74 @@ export async function buildVpToken(
     return sdJwtWithoutKb + kbJwt;
 }
 
-/** Submit VP Token to the verifier's response_uri via direct_post. */
+/**
+ * Submit the VP Token to the verifier's response_uri.
+ *
+ * For response_mode `direct_post` the vp_token and state are sent as plaintext
+ * form params. For `direct_post.jwt` (HAIP §5) the Authorization Response is
+ * encrypted as a JWE to the verifier's response-encryption key (published in
+ * client_metadata.jwks) and sent as the single `response` form param.
+ */
 export async function submitPresentation(
-    responseUri: string,
+    authReq: Oid4vpAuthorizationRequest,
     vpToken: string,
-    state: string,
 ): Promise<Response> {
+    const { response_uri: responseUri, state, response_mode: responseMode } = authReq;
+
+    let body: URLSearchParams;
+    if (responseMode === 'direct_post.jwt') {
+        const jwe = await encryptAuthorizationResponse(authReq, vpToken);
+        body = new URLSearchParams({ response: jwe });
+    } else {
+        body = new URLSearchParams({ vp_token: vpToken, state });
+    }
+
     return fetch(responseUri, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ vp_token: vpToken, state }).toString(),
+        body: body.toString(),
     });
+}
+
+/**
+ * Encrypt the Authorization Response ({vp_token, state}) as a compact JWE to
+ * the verifier's response-encryption key. alg/enc come from the request
+ * (authorization_encrypted_response_alg/enc), defaulting to ECDH-ES / A128GCM
+ * per HAIP. The recipient key is the first usable EC key in
+ * client_metadata.jwks.keys.
+ */
+async function encryptAuthorizationResponse(
+    authReq: Oid4vpAuthorizationRequest,
+    vpToken: string,
+): Promise<string> {
+    const metadata = authReq.client_metadata ?? {};
+    const alg = (metadata.authorization_encrypted_response_alg as string) ?? 'ECDH-ES';
+    const enc = (metadata.authorization_encrypted_response_enc as string) ?? 'A128GCM';
+
+    const recipientJwk = selectEncryptionJwk(metadata);
+    if (!recipientJwk) {
+        throw new Error('No response-encryption key found in client_metadata.jwks');
+    }
+    const recipientKey = await importJWK(recipientJwk, alg);
+
+    const payload = Uint8Array.from(
+        new TextEncoder().encode(JSON.stringify({ vp_token: vpToken, state: authReq.state })),
+    );
+
+    const header: Record<string, unknown> = { alg, enc };
+    if (recipientJwk.kid) header.kid = recipientJwk.kid;
+
+    return new CompactEncrypt(payload)
+        .setProtectedHeader(header as Parameters<CompactEncrypt['setProtectedHeader']>[0])
+        .encrypt(recipientKey);
+}
+
+/** Pick the first EC encryption key from client_metadata.jwks.keys. */
+function selectEncryptionJwk(metadata: Record<string, unknown>): JWK | null {
+    const jwks = metadata.jwks as { keys?: JWK[] } | undefined;
+    const keys = jwks?.keys ?? [];
+    // Prefer an explicit use=enc key; otherwise fall back to the first EC key.
+    return keys.find(k => k.kty === 'EC' && k.use === 'enc')
+        ?? keys.find(k => k.kty === 'EC')
+        ?? null;
 }
