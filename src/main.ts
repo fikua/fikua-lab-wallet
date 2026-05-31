@@ -1020,6 +1020,14 @@ async function handlePresentationRequest(uri: string): Promise<void> {
             return;
         }
 
+        // 2e. If the request carries transaction_data, every entry's "type" must
+        // be one the wallet supports (OID4VP §5). The wallet supports none, so
+        // any transaction_data entry is rejected — do not present.
+        if (authReq.transaction_data && authReq.transaction_data.length > 0) {
+            showFlowError('Rejected: unsupported transaction_data type');
+            return;
+        }
+
         // 3. Parse DCQL query
         const credQuery = authReq.dcql_query?.credentials?.[0];
         if (!credQuery) {

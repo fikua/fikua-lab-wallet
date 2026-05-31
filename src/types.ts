@@ -217,6 +217,9 @@ export interface Oid4vpAuthorizationRequest {
     client_metadata?: Record<string, unknown>;
     // MUST NOT be present with direct_post / direct_post.jwt (OID4VP §5.9.3).
     redirect_uri?: string;
+    // Array of base64url-encoded JSON transaction_data objects (OID4VP §5). The
+    // wallet must reject the request if any entry's type is unsupported.
+    transaction_data?: string[];
 }
 
 export interface DcqlQuery {
