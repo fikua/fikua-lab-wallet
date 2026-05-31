@@ -1,4 +1,4 @@
-import { WALLET_BASE, PRE_AUTH_GRANT } from './constants';
+import { WALLET_BASE, WALLET_PROVIDER_BASE, PRE_AUTH_GRANT } from './constants';
 import { base64urlEncode, generateRandomString } from './utils';
 import { buildJwt, exportPublicJwk, sha256 } from './crypto';
 import type {
@@ -210,6 +210,30 @@ export async function buildDpopProof(
 // =========================================================================
 // WIA (Wallet Instance Attestation) — self-signed for testing
 // =========================================================================
+
+/**
+ * Obtain a Wallet Instance Attestation. Prefers a WP-issued WIA (signed by the
+ * Wallet Provider with an x5c chain to a trusted anchor); falls back to a
+ * self-signed WIA if the Wallet Provider is unreachable. The wallet's PoP
+ * public key is bound via cnf in both cases.
+ */
+export async function obtainWia(wiaKeyPair: CryptoKeyPair, clientId: string): Promise<string> {
+    const pubJwk = await exportPublicJwk(wiaKeyPair);
+    try {
+        const res = await fetch(WALLET_PROVIDER_BASE + '/issue-wia', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_id: clientId, jwk: pubJwk }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.wia) return data.wia as string;
+        }
+    } catch {
+        // WP unreachable — fall back to self-signed below
+    }
+    return generateWia(wiaKeyPair, clientId);
+}
 
 export async function generateWia(wiaKeyPair: CryptoKeyPair, clientId: string): Promise<string> {
     const pubJwk = await exportPublicJwk(wiaKeyPair);
