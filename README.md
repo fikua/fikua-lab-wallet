@@ -24,7 +24,7 @@ against the lab backend.
 ├── vite.config.ts      Build config + PWA + local backend proxy
 ├── tsconfig.json
 ├── vitest.config.ts
-└── shared/             Vendored shared assets (consent banner, error pages)
+└── shared/             Vendored shared assets (error pages)
 ```
 
 ## Local development
