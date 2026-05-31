@@ -1013,6 +1013,13 @@ async function handlePresentationRequest(uri: string): Promise<void> {
             return;
         }
 
+        // 2d. The client_id must use a Client Identifier Prefix the wallet knows
+        // (OID4VP §5.9). Reject unknown prefixes — do not present.
+        if (!hasValidClientIdPrefix(authReq.client_id || clientId)) {
+            showFlowError('Rejected: unsupported client_id prefix');
+            return;
+        }
+
         // 3. Parse DCQL query
         const credQuery = authReq.dcql_query?.credentials?.[0];
         if (!credQuery) {
@@ -1090,6 +1097,21 @@ async function handlePresentationRequest(uri: string): Promise<void> {
     } catch (err) {
         showFlowError(err instanceof Error ? err.message : 'Presentation failed');
     }
+}
+
+// Client Identifier Prefixes defined by OID4VP §5.9. A client_id is valid if
+// it uses one of these "prefix:" schemes (or is a bare pre-registered id with
+// no prefix, accepted for backwards compatibility).
+const VALID_CLIENT_ID_PREFIXES = [
+    'x509_hash', 'x509_san_dns', 'redirect_uri', 'openid_federation',
+    'decentralized_identifier', 'verifier_attestation', 'web-origin', 'pre-registered',
+];
+
+function hasValidClientIdPrefix(clientId: string): boolean {
+    if (!clientId) return false;
+    const colon = clientId.indexOf(':');
+    if (colon === -1) return true; // bare pre-registered client_id (no prefix)
+    return VALID_CLIENT_ID_PREFIXES.includes(clientId.slice(0, colon));
 }
 
 function showPresentationConsent(
