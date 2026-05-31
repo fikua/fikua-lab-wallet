@@ -268,12 +268,12 @@ describe('submitPresentation', () => {
         await submitPresentation({
             response_type: 'vp_token', client_id: 'verifier', response_mode: 'direct_post',
             response_uri: 'https://verifier.test/response', nonce: 'n', state: 'st',
-        }, { pid: 'vptoken~kb' });
+        }, { pid: ['vptoken~kb'] });
 
         const [, init] = fetchMock.mock.calls[0];
         const body = new URLSearchParams(init.body as string);
         // DCQL vp_token is a JSON object keyed by the credential id.
-        expect(JSON.parse(body.get('vp_token') as string)).toEqual({ pid: 'vptoken~kb' });
+        expect(JSON.parse(body.get('vp_token') as string)).toEqual({ pid: ['vptoken~kb'] });
         expect(body.get('state')).toBe('st');
         expect(body.get('response')).toBeNull();
     });
@@ -297,7 +297,7 @@ describe('submitPresentation', () => {
                 authorization_encrypted_response_enc: 'A128GCM',
                 jwks: { keys: [publicJwk] },
             },
-        }, { pid: 'theVpToken~kb' });
+        }, { pid: ['theVpToken~kb'] });
 
         const [, init] = fetchMock.mock.calls[0];
         const body = new URLSearchParams(init.body as string);
@@ -310,7 +310,7 @@ describe('submitPresentation', () => {
         expect(protectedHeader.alg).toBe('ECDH-ES');
         expect(protectedHeader.enc).toBe('A128GCM');
         const decoded = JSON.parse(new TextDecoder().decode(plaintext));
-        expect(decoded.vp_token).toEqual({ pid: 'theVpToken~kb' });
+        expect(decoded.vp_token).toEqual({ pid: ['theVpToken~kb'] });
         expect(decoded.state).toBe('st-123');
     });
 });

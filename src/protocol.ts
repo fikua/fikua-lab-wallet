@@ -429,7 +429,7 @@ export async function buildVpToken(
  */
 export async function submitPresentation(
     authReq: Oid4vpAuthorizationRequest,
-    vpToken: Record<string, string>,
+    vpToken: Record<string, string[]>,
 ): Promise<Response> {
     const { response_uri: responseUri, state, response_mode: responseMode } = authReq;
 
@@ -460,7 +460,7 @@ export async function submitPresentation(
  */
 async function encryptAuthorizationResponse(
     authReq: Oid4vpAuthorizationRequest,
-    vpToken: Record<string, string>,
+    vpToken: Record<string, string[]>,
 ): Promise<string> {
     const metadata = authReq.client_metadata ?? {};
     const alg = (metadata.authorization_encrypted_response_alg as string) ?? 'ECDH-ES';

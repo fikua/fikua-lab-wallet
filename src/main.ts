@@ -1036,8 +1036,9 @@ async function handlePresentationRequest(uri: string): Promise<void> {
         const presentation = await buildVpToken(
             matching, requestedClaims, authReq.nonce, authReq.client_id || clientId,
         );
-        // OID4VP 1.0 Final with DCQL: vp_token is keyed by the DCQL credential id.
-        const vpToken = { [credQuery.id]: presentation };
+        // OID4VP 1.0 Final with DCQL: vp_token is keyed by the DCQL credential
+        // id, and each value is an ARRAY of presentation strings.
+        const vpToken = { [credQuery.id]: [presentation] };
         plog('ok', 'VP Token built (' + presentation.length + ' bytes)');
 
         // 7. Submit to verifier
