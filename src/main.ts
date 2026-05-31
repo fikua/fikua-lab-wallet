@@ -10,6 +10,7 @@ import {
     exportKeyPair, importKeyPair,
 } from './crypto';
 import { openDb, saveCredential, getCredential, getAllCredentials, deleteCredentialById, logActivity, getAllActivity } from './storage';
+import { getPrfWiaKeyPair } from './prf';
 import { parseSdJwt } from './sdjwt';
 import { parseMdoc } from './mdoc';
 import { startScanning } from './qr-scanner';
@@ -192,6 +193,9 @@ async function createPasskey(): Promise<void> {
                         residentKey: 'preferred',
                     },
                     timeout: 60000,
+                    // Enable the PRF extension so this passkey can later derive
+                    // the WIA proof-of-possession key (hardware-bound).
+                    extensions: { prf: {} } as AuthenticationExtensionsClientInputs,
                 },
             }) as PublicKeyCredential;
             localStorage.setItem(PASSKEY_KEY, JSON.stringify({
@@ -643,8 +647,12 @@ async function executeAuthCodeFlow(
         let popJwt: string | undefined;
         if (isHaip && dpopKeyPair && wiaKeyPair) {
             dpopProofPar = await buildDpopProof(dpopKeyPair, 'POST', parEndpoint);
-            wiaJwt = await obtainWia(wiaKeyPair, clientId);
-            popJwt = await generateWiaPop(wiaKeyPair, clientId, issuerUrl);
+            // Prefer a hardware-bound key derived from the passkey via PRF; the
+            // same key binds the WIA (cnf) and signs the PoP. Falls back to the
+            // stored wiaKeyPair where PRF is unsupported.
+            const popKey = (await getPrfWiaKeyPair()) ?? wiaKeyPair;
+            wiaJwt = await obtainWia(popKey, clientId);
+            popJwt = await generateWiaPop(popKey, clientId, issuerUrl);
         }
         const parResponse = await pushAuthorizationRequest(parEndpoint, parParams, dpopProofPar, wiaJwt, popJwt);
         requestUri = parResponse.request_uri;
@@ -706,8 +714,9 @@ async function handleAuthCallback(params: URLSearchParams): Promise<boolean> {
         const tokenOptions: { dpopProof?: string; wiaJwt?: string; popJwt?: string } = {};
         if (flowState.isHaip && dpopKeyPair && wiaKeyPair) {
             tokenOptions.dpopProof = await buildDpopProof(dpopKeyPair, 'POST', flowState.authMeta.token_endpoint);
-            tokenOptions.wiaJwt = await obtainWia(wiaKeyPair, flowState.clientId);
-            tokenOptions.popJwt = await generateWiaPop(wiaKeyPair, flowState.clientId, flowState.issuerUrl);
+            const popKey = (await getPrfWiaKeyPair()) ?? wiaKeyPair;
+            tokenOptions.wiaJwt = await obtainWia(popKey, flowState.clientId);
+            tokenOptions.popJwt = await generateWiaPop(popKey, flowState.clientId, flowState.issuerUrl);
         }
         const tokenResponse = await requestToken(flowState.authMeta.token_endpoint, tokenParams, tokenOptions);
 
