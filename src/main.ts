@@ -1003,6 +1003,16 @@ async function handlePresentationRequest(uri: string): Promise<void> {
             return;
         }
 
+        // 2c. With response_mode direct_post / direct_post.jwt, redirect_uri MUST
+        // NOT be present (it is mutually exclusive with response_uri, OID4VP
+        // §5.9.3). Reject the request — do not present.
+        const isDirectPost = authReq.response_mode === 'direct_post'
+            || authReq.response_mode === 'direct_post.jwt';
+        if (isDirectPost && authReq.redirect_uri) {
+            showFlowError('Rejected: redirect_uri must not be present with direct_post');
+            return;
+        }
+
         // 3. Parse DCQL query
         const credQuery = authReq.dcql_query?.credentials?.[0];
         if (!credQuery) {

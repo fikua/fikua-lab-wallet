@@ -215,6 +215,8 @@ export interface Oid4vpAuthorizationRequest {
     state: string;
     dcql_query?: DcqlQuery;
     client_metadata?: Record<string, unknown>;
+    // MUST NOT be present with direct_post / direct_post.jwt (OID4VP §5.9.3).
+    redirect_uri?: string;
 }
 
 export interface DcqlQuery {
