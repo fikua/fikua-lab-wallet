@@ -229,7 +229,8 @@ export interface DcqlQuery {
 export interface DcqlCredentialQuery {
     id: string;
     format: string;
-    meta?: { vct_values?: string[] };
+    // vct_values for dc+sd-jwt; doctype_value for mso_mdoc.
+    meta?: { vct_values?: string[]; doctype_value?: string };
     claims?: DcqlClaimQuery[];
 }
 

@@ -13,6 +13,7 @@ import { openDb, saveCredential, getCredential, getAllCredentials, deleteCredent
 import { getPrfWiaKeyPair } from './prf';
 import { parseSdJwt } from './sdjwt';
 import { parseMdoc } from './mdoc';
+import { buildMdocDeviceResponse } from './mdocPresentation';
 import { startScanning } from './qr-scanner';
 import {
     parseCredentialOfferFromUrl, fetchCredentialOffer,
@@ -1034,20 +1035,27 @@ async function handlePresentationRequest(uri: string): Promise<void> {
             showFlowError('No credential query in authorization request');
             return;
         }
-        const vctValues = credQuery.meta?.vct_values ?? [];
-        const requestedClaims = (credQuery.claims ?? []).map(c => c.path[0]);
-        plog('info', 'Requested VCT: ' + vctValues.join(', '));
+        const isMdoc = credQuery.format === 'mso_mdoc';
+        // mdoc claim paths are [namespace, element]; sd-jwt paths are [claim].
+        // Either way the element/claim name is the last path segment.
+        const requestedClaims = (credQuery.claims ?? []).map(c => c.path[c.path.length - 1]);
+        // Type values: doctype_value for mdoc, vct_values for sd-jwt.
+        const typeValues = isMdoc
+            ? (credQuery.meta?.doctype_value ? [credQuery.meta.doctype_value] : [])
+            : (credQuery.meta?.vct_values ?? []);
+        plog('info', 'Requested type: ' + typeValues.join(', '));
         plog('info', 'Requested claims: ' + requestedClaims.join(', '));
 
-        // 4. Find matching credential
+        // 4. Find matching credential (by vct/docType, both stored in c.vct).
         updateFlowStatus('Searching for matching credential...');
+        const wantFormat = isMdoc ? 'mso_mdoc' : 'dc+sd-jwt';
         const allCreds = await getAllCredentials();
         const matching = allCreds.find(c =>
-            vctValues.length === 0 || vctValues.includes(c.vct),
+            c.format === wantFormat && (typeValues.length === 0 || typeValues.includes(c.vct)),
         );
 
         if (!matching) {
-            showFlowError('No matching credential found for type: ' + vctValues.join(', '));
+            showFlowError('No matching credential found for type: ' + typeValues.join(', '));
             return;
         }
         plog('ok', 'Found matching credential: ' + getCredentialDisplayName(matching));
@@ -1066,9 +1074,27 @@ async function handlePresentationRequest(uri: string): Promise<void> {
         // 6. Build VP Token
         showFlowPhase('processing');
         updateFlowStatus('Building VP Token...');
-        const presentation = await buildVpToken(
-            matching, requestedClaims, authReq.nonce, authReq.client_id || clientId,
-        );
+        const effClientId = authReq.client_id || clientId;
+        let presentation: string;
+        if (isMdoc) {
+            // ISO mdoc: build a DeviceResponse bound to the verifier via the
+            // OID4VP session transcript (includes the response-encryption key
+            // thumbprint for direct_post.jwt).
+            presentation = await buildMdocDeviceResponse({
+                rawMdoc: matching.rawSdJwt, // raw IssuerSigned bytes (field is misnamed)
+                docType: matching.vct,
+                requestedElements: requestedClaims,
+                holderKey: matching.holderKey,
+                clientId: effClientId,
+                nonce: authReq.nonce,
+                responseUri: authReq.response_uri,
+                encryptionJwk: selectResponseEncryptionJwk(authReq),
+            });
+        } else {
+            presentation = await buildVpToken(
+                matching, requestedClaims, authReq.nonce, effClientId,
+            );
+        }
         // OID4VP 1.0 Final with DCQL: vp_token is keyed by the DCQL credential
         // id, and each value is an ARRAY of presentation strings.
         const vpToken = { [credQuery.id]: [presentation] };
@@ -1120,6 +1146,17 @@ function hasValidClientIdPrefix(clientId: string): boolean {
     const colon = clientId.indexOf(':');
     if (colon === -1) return true; // bare pre-registered client_id (no prefix)
     return VALID_CLIENT_ID_PREFIXES.includes(clientId.slice(0, colon));
+}
+
+// Pick the verifier's EC response-encryption JWK from client_metadata.jwks,
+// used for the mdoc session-transcript thumbprint. Null if absent.
+function selectResponseEncryptionJwk(
+    authReq: import('./types').Oid4vpAuthorizationRequest,
+): { crv: string; kty: string; x: string; y: string } | null {
+    const jwks = (authReq.client_metadata?.jwks as { keys?: Array<Record<string, string>> } | undefined);
+    const keys = jwks?.keys ?? [];
+    const k = keys.find(j => j.kty === 'EC' && j.use === 'enc') ?? keys.find(j => j.kty === 'EC');
+    return k ? { crv: k.crv, kty: k.kty, x: k.x, y: k.y } : null;
 }
 
 function showPresentationConsent(
