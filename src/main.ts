@@ -558,7 +558,7 @@ async function executeIssuanceFlow(offer: CredentialOffer): Promise<void> {
         if (grant.type === 'pre-authorized_code') {
             await executePreAuthFlow(offer, grant, issuerMeta, authMeta, configId);
         } else {
-            await executeAuthCodeFlow(offer, grant, issuerMeta, authMeta, configId);
+            await executeAuthCodeFlow(offer, grant, issuerMeta, authMeta, configId, authServerUrl);
         }
     } catch (err) {
         showFlowError((err as Error).message);
@@ -608,7 +608,7 @@ async function executePreAuthFlow(
 async function executeAuthCodeFlow(
     offer: CredentialOffer | null, grant: GrantInfo,
     issuerMeta: CredentialIssuerMetadata, authMeta: AuthServerMetadata,
-    configId: string,
+    configId: string, authServerUrl: string,
 ): Promise<void> {
     const issuerUrl = offer?.credential_issuer ?? ISSUER_BASE;
     const clientId = WALLET_BASE;
@@ -654,7 +654,7 @@ async function executeAuthCodeFlow(
             // stored wiaKeyPair where PRF is unsupported.
             const popKey = (await getPrfWiaKeyPair()) ?? wiaKeyPair;
             wiaJwt = await obtainWia(popKey, clientId);
-            popJwt = await generateWiaPop(popKey, clientId, issuerUrl);
+            popJwt = await generateWiaPop(popKey, clientId, authServerUrl);
         }
         const parResponse = await pushAuthorizationRequest(parEndpoint, parParams, dpopProofPar, wiaJwt, popJwt);
         requestUri = parResponse.request_uri;
@@ -664,7 +664,7 @@ async function executeAuthCodeFlow(
     const flowState: AuthFlowState = {
         offer, issuerMeta, authMeta, configId, state,
         codeVerifier: pkce.code_verifier,
-        isHaip, clientId, redirectUri, issuerUrl,
+        isHaip, clientId, redirectUri, issuerUrl, authServerUrl,
     };
     if (dpopKeyPair) flowState.dpopKeyPair = await exportKeyPair(dpopKeyPair);
     if (wiaKeyPair) flowState.wiaKeyPair = await exportKeyPair(wiaKeyPair);
@@ -725,7 +725,7 @@ async function handleAuthCallback(params: URLSearchParams): Promise<boolean> {
             tokenOptions.dpopProof = await buildDpopProof(dpopKeyPair, 'POST', flowState.authMeta.token_endpoint);
             const popKey = (await getPrfWiaKeyPair()) ?? wiaKeyPair;
             tokenOptions.wiaJwt = await obtainWia(popKey, flowState.clientId);
-            tokenOptions.popJwt = await generateWiaPop(popKey, flowState.clientId, flowState.issuerUrl);
+            tokenOptions.popJwt = await generateWiaPop(popKey, flowState.clientId, flowState.authServerUrl);
         }
         const tokenResponse = await requestToken(flowState.authMeta.token_endpoint, tokenParams, tokenOptions);
 
@@ -910,7 +910,7 @@ async function startWalletInitiatedFlow(configId: string, issuerMeta: Credential
         const authServerUrl = resolveAuthServerUrl(issuerMeta, ISSUER_BASE);
         const authMeta = await fetchAuthServerMetadata(authServerUrl);
         const grant: GrantInfo = { type: 'authorization_code', data: {} };
-        await executeAuthCodeFlow(null, grant, issuerMeta, authMeta, configId);
+        await executeAuthCodeFlow(null, grant, issuerMeta, authMeta, configId, authServerUrl);
     } catch (err) {
         showFlowError((err as Error).message);
         await logActivity('Issuance failed', configId, ISSUER_BASE, 'failed', (err as Error).message);
