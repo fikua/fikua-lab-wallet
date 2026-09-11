@@ -1,6 +1,13 @@
-export const ISSUER_BASE = 'https://lab.fikua.com/issuer';
-// The wallet PWA is mounted at /wallet/ under lab.fikua.com.
-export const WALLET_BASE = location.origin + '/wallet';
+// The Credential Issuer. Its own metadata's authorization_servers[0]
+// points at fikua-lab-idp (see protocol.ts's resolveAuthServerUrl) —
+// this constant is never assumed to also be the Authorization Server.
+export const ISSUER_BASE = 'https://issuer.fikua.com';
+// The wallet PWA is served at its own domain's root, wallet.fikua.com —
+// matching the convention issuer.fikua.com/idp.fikua.com/
+// attestation-registry.fikua.com already follow. location.origin alone
+// is correct here since there is no /wallet subpath to account for
+// anymore (see wrangler.toml / src/worker/index.ts).
+export const WALLET_BASE = location.origin;
 
 // Wallet Provider (Fikua Lab) — issues the Wallet Instance Attestation. The
 // wallet requests a WP-signed WIA here; falls back to self-signed if offline.

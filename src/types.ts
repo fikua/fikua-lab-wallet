@@ -33,6 +33,12 @@ export interface CredentialIssuerMetadata {
     notification_endpoint?: string;
     credential_configurations_supported: Record<string, CredentialConfiguration>;
     display?: IssuerDisplay[];
+    // OID4VCI 1.0 §11.2.2: present when the Authorization Server issuing
+    // access tokens for this Credential Issuer is a different entity
+    // (fikua-lab-idp) than the Credential Issuer itself
+    // (fikua-lab-issuer) — the common case since the AS/Issuer split.
+    // Absent means the issuer is its own AS.
+    authorization_servers?: string[];
 }
 
 export interface CredentialConfiguration {
