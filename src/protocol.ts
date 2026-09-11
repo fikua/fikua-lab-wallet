@@ -47,10 +47,19 @@ export async function fetchIssuerMetadata(issuerUrl: string): Promise<Credential
     return res.json();
 }
 
-export async function fetchAuthServerMetadata(issuerUrl: string): Promise<AuthServerMetadata> {
-    const res = await fetch(issuerUrl + '/.well-known/oauth-authorization-server');
+export async function fetchAuthServerMetadata(authServerUrl: string): Promise<AuthServerMetadata> {
+    const res = await fetch(authServerUrl + '/.well-known/oauth-authorization-server');
     if (!res.ok) throw new Error('Failed to fetch auth server metadata: ' + res.status);
     return res.json();
+}
+
+// OID4VCI 1.0 §11.2.2: a Credential Issuer's metadata MAY name a
+// different Authorization Server via authorization_servers[0]. Since
+// the fikua-lab-idp/fikua-lab-issuer split, this is the normal case, not
+// an edge case — fetchAuthServerMetadata must be called with the
+// resolved AS origin, never assumed to be the issuer's own host.
+export function resolveAuthServerUrl(issuerMeta: CredentialIssuerMetadata, issuerUrl: string): string {
+    return issuerMeta.authorization_servers?.[0] ?? issuerUrl;
 }
 
 // =========================================================================

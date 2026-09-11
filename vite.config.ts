@@ -2,10 +2,12 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-    // The wallet PWA is served at https://lab.fikua.com/wallet/ in
-    // production, so every emitted asset URL must be prefixed with
-    // /wallet/ (Vite handles this through `base`).
-    base: '/wallet/',
+    // The wallet PWA is served at its own domain's root,
+    // https://wallet.fikua.com — matching the convention
+    // issuer.fikua.com/idp.fikua.com/attestation-registry.fikua.com
+    // already follow, replacing the old lab.fikua.com/wallet/* subpath
+    // mount. No base path needed anymore.
+    base: '/',
     root: '.',
     publicDir: 'public',
     build: {
@@ -14,18 +16,11 @@ export default defineConfig({
     },
     server: {
         port: 3004,
-        proxy: {
-            '/.well-known': 'http://localhost:8090',
-            '/oid4vci': 'http://localhost:8090',
-            '/oid4vp': 'http://localhost:8090',
-            '/admin': 'http://localhost:8090',
-        },
     },
     plugins: [
         VitePWA({
             registerType: 'autoUpdate',
-            // PWA is mounted under /wallet/ on lab.fikua.com.
-            scope: '/wallet/',
+            scope: '/',
             manifest: {
                 name: 'Fikua Lab Wallet',
                 short_name: 'Wallet',
@@ -34,8 +29,8 @@ export default defineConfig({
                 background_color: '#1A1A1A',
                 display: 'standalone',
                 orientation: 'portrait',
-                scope: '/wallet/',
-                start_url: '/wallet/',
+                scope: '/',
+                start_url: '/',
                 icons: [
                     { src: 'icon-192.png', type: 'image/png', sizes: '192x192' },
                     { src: 'icon-512.png', type: 'image/png', sizes: '512x512', purpose: 'any' },
@@ -44,16 +39,11 @@ export default defineConfig({
             },
             workbox: {
                 globPatterns: ['**/*.{js,css,html,svg}'],
-                navigateFallback: '/wallet/index.html',
-                navigateFallbackDenylist: [/^\/wallet\/(\.well-known|oid4vci|oid4vp|admin)\//],
-                runtimeCaching: [
-                    {
-                        // Don't cache backend calls — they go through the Worker
-                        // proxy which also strips the /wallet prefix.
-                        urlPattern: /\/wallet\/(oid4vci|oid4vp|admin|\.well-known)\//,
-                        handler: 'NetworkOnly',
-                    },
-                ],
+                navigateFallback: '/index.html',
+                // No API paths to deny anymore — the wallet calls
+                // issuer.fikua.com / idp.fikua.com directly (different
+                // origins), so the service worker's own navigation
+                // fallback/precache never sees those requests at all.
             },
         }),
     ],

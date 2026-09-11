@@ -1,19 +1,25 @@
 # Cloudflare Worker (Static Assets + handler) configuration.
 #
-# The wallet PWA (Vite + vite-plugin-pwa) is served at
-# https://lab.fikua.com/wallet/*. The Worker function in
-# src/worker/index.ts strips the /wallet prefix and forwards OID4VC /
-# .well-known / oid4vp paths to the lab backend at
-# https://lab-backend.fikua.com (Cloudflare Tunnel + Access Service
-# Auth). See ADR 0008r1 (v4).
+# The wallet PWA (Vite + vite-plugin-pwa) is served at its own domain,
+# https://wallet.fikua.com — matching the convention every other Fikua
+# Lab service already follows (issuer.fikua.com, idp.fikua.com,
+# attestation-registry.fikua.com), replacing the old
+# lab.fikua.com/wallet/* subpath mount. As its own custom domain there
+# is no role-prefix path to strip anymore — the Worker in
+# src/worker/index.ts only serves static assets. Since the
+# fikua-lab-idp/fikua-lab-issuer split, there is no single "lab backend"
+# to proxy API calls to either — the wallet calls https://issuer.fikua.com
+# and https://idp.fikua.com directly (see src/constants.ts /
+# src/protocol.ts's resolveAuthServerUrl). Superseded ADR 0008r1 (v4) —
+# both the subpath mount and the proxy design it describes no longer
+# apply.
 
 name = "fikua-lab-wallet"
 main = "src/worker/index.ts"
 compatibility_date = "2026-05-22"
 
 routes = [
-    { pattern = "lab.fikua.com/wallet", custom_domain = false, zone_name = "fikua.com" },
-    { pattern = "lab.fikua.com/wallet/*", custom_domain = false, zone_name = "fikua.com" }
+    { pattern = "wallet.fikua.com", custom_domain = true }
 ]
 
 [assets]
@@ -23,10 +29,3 @@ binding = "ASSETS"
 # router and the vite-plugin-pwa service worker keep their navigation
 # consistent.
 not_found_handling = "single-page-application"
-
-# Backend reach (see ADR 0008r1):
-#   LAB_BACKEND_ORIGIN     — plain var, the hostname Workers fetch().
-#   CF_ACCESS_CLIENT_ID    — secret (wrangler secret put).
-#   CF_ACCESS_CLIENT_SECRET — secret (wrangler secret put).
-[vars]
-LAB_BACKEND_ORIGIN = "https://lab-backend.fikua.com"

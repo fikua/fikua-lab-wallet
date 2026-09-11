@@ -17,7 +17,7 @@ import { buildMdocDeviceResponse } from './mdocPresentation';
 import { startScanning } from './qr-scanner';
 import {
     parseCredentialOfferFromUrl, fetchCredentialOffer,
-    fetchIssuerMetadata, fetchAuthServerMetadata,
+    fetchIssuerMetadata, fetchAuthServerMetadata, resolveAuthServerUrl,
     analyzeGrant, requestToken, requestNonce,
     buildProofJwt, requestCredential, sendNotification,
     buildDpopProof, obtainWia, generateWiaPop,
@@ -551,8 +551,9 @@ async function executeIssuanceFlow(offer: CredentialOffer): Promise<void> {
         updateFlowStatus('Fetching issuer metadata...');
         const issuerMeta = await fetchIssuerMetadata(issuerUrl);
         plog('ok', 'Issuer metadata OK — credential_endpoint: ' + issuerMeta.credential_endpoint);
-        const authMeta = await fetchAuthServerMetadata(issuerUrl);
-        plog('ok', 'Auth metadata OK — token_endpoint: ' + authMeta.token_endpoint);
+        const authServerUrl = resolveAuthServerUrl(issuerMeta, issuerUrl);
+        const authMeta = await fetchAuthServerMetadata(authServerUrl);
+        plog('ok', 'Auth metadata OK (' + authServerUrl + ') — token_endpoint: ' + authMeta.token_endpoint);
 
         if (grant.type === 'pre-authorized_code') {
             await executePreAuthFlow(offer, grant, issuerMeta, authMeta, configId);
@@ -906,7 +907,8 @@ async function startWalletInitiatedFlow(configId: string, issuerMeta: Credential
     updateFlowStatus('Starting wallet-initiated issuance...');
 
     try {
-        const authMeta = await fetchAuthServerMetadata(ISSUER_BASE);
+        const authServerUrl = resolveAuthServerUrl(issuerMeta, ISSUER_BASE);
+        const authMeta = await fetchAuthServerMetadata(authServerUrl);
         const grant: GrantInfo = { type: 'authorization_code', data: {} };
         await executeAuthCodeFlow(null, grant, issuerMeta, authMeta, configId);
     } catch (err) {

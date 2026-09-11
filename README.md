@@ -1,11 +1,15 @@
 # Fikua Lab — Wallet (holder)
 
 EUDI-style Wallet PWA for the Fikua Lab. Served at
-**<https://wallet.lab.fikua.com>**.
+**<https://wallet.fikua.com>** — its own domain, matching the convention
+`issuer.fikua.com` / `idp.fikua.com` / `attestation-registry.fikua.com`
+already follow.
 
 The only frontend in the lab with a real build step (Vite + TypeScript +
-`vite-plugin-pwa`). Acts as the OID4VCI client and the OID4VP holder
-against the lab backend.
+`vite-plugin-pwa`). Acts as the OID4VCI client (against
+`issuer.fikua.com`) and the OID4VP holder, calling `issuer.fikua.com`
+and `idp.fikua.com` directly — there is no single "lab backend" it goes
+through anymore since the AS/Issuer split.
 
 ## Stack
 
@@ -21,7 +25,7 @@ against the lab backend.
 ├── public/             Static assets copied into dist/ verbatim
 ├── index.html          Vite entry
 ├── package.json        Scripts: dev / build / preview / test
-├── vite.config.ts      Build config + PWA + local backend proxy
+├── vite.config.ts      Build config + PWA
 ├── tsconfig.json
 ├── vitest.config.ts
 └── shared/             Vendored shared assets (error pages)
@@ -31,7 +35,7 @@ against the lab backend.
 
 ```bash
 npm ci
-npm run dev          # http://localhost:3004 — proxies /oid4vci, /oid4vp, /.well-known, /admin to http://localhost:8090
+npm run dev          # http://localhost:3004 — calls issuer.fikua.com / idp.fikua.com directly (CORS-enabled)
 npm test
 ```
 
@@ -46,11 +50,12 @@ npm run build
 
 - **Production:** Cloudflare Workers Static Assets (project
   `fikua-lab-wallet`), serving the `dist/` directory. Custom domain
-  `wallet.lab.fikua.com`.
+  `wallet.fikua.com`.
 - **CI build:** the Workers project runs `npm ci && npm run build` and
   publishes `dist/` on every push to `main`.
-- **Backend reverse-proxy:** `/.well-known/*`, `/oid4vci/*` and
-  `/oid4vp/*` are proxied to the lab backend at the edge.
+- **No backend proxy:** the wallet calls `issuer.fikua.com` and
+  `idp.fikua.com` directly from the browser; both must serve permissive
+  CORS headers (see each repo's own `internal/httpapi/cors.go`).
 
 ## Architecture decisions
 
