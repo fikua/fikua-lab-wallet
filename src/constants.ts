@@ -9,9 +9,10 @@ export const ISSUER_BASE = 'https://issuer.fikua.com';
 // anymore (see wrangler.toml / src/worker/index.ts).
 export const WALLET_BASE = location.origin;
 
-// Wallet Provider (Fikua Lab) — issues the Wallet Instance Attestation. The
-// wallet requests a WP-signed WIA here; falls back to self-signed if offline.
-export const WALLET_PROVIDER_BASE = 'https://lab.fikua.com/wallet-provider';
+// Wallet Provider (Fikua Lab) — issues the Wallet Instance Attestation.
+// Standalone Go service, signs via the Fikua DSS. The wallet requests a
+// WP-signed WIA here; falls back to self-signed if offline.
+export const WALLET_PROVIDER_BASE = 'https://wallet-attestations.fikua.com/wallet-provider';
 
 export const DB_NAME = 'fikua-wallet';
 export const DB_VERSION = 1;
