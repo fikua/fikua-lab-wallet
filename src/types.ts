@@ -178,6 +178,11 @@ export interface AuthFlowState {
     clientId: string;
     redirectUri: string;
     issuerUrl: string;
+    // The authorization server's own identifier — the `aud` a wallet
+    // client-attestation PoP JWT must carry for THIS server's own
+    // /par and /token endpoints to accept it. Distinct from issuerUrl
+    // since fikua-lab-idp/fikua-lab-issuer split into separate services.
+    authServerUrl: string;
     dpopKeyPair?: ExportedKeyPair;
     wiaKeyPair?: ExportedKeyPair;
 }
