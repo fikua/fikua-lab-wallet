@@ -23,7 +23,7 @@
     },
     "dependencies": {
         "cbor-x": "^1.6.4",
-        "jose": "^5.10.0",
+        "jose": "^6.2.17",
         "qr-scanner": "^1.4.2"
     }
 }
