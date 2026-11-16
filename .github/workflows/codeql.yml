@@ -1,0 +1,22 @@
+name: CodeQL
+
+# Shared workflow: fikua/fikua-ci-workflows (ADR 0018).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '23 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    permissions:
+      contents: read
+      security-events: write
+    uses: fikua/fikua-ci-workflows/.github/workflows/codeql.yml@383c2bdf97121b1405704f30468b0a45272cae73  # v1.2.0
+    with:
+      languages: '["javascript-typescript", "actions"]'
