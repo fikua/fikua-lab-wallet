@@ -1,0 +1,28 @@
+name: CI
+
+# Shared workflows: fikua/fikua-ci-workflows (ADR 0018).
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: fikua/fikua-ci-workflows/.github/workflows/node-ci.yml@2d40554f8f019fc7e0968d97e6dc27f2b4778352  # v1.1.0
+    with:
+      # npm run build runs tsc first, so it is also the typecheck.
+      # --coverage writes coverage/lcov.info, which sonar-project.properties points at.
+      test-command: npx vitest run --coverage
+      sonar: true
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  gitleaks:
+    uses: fikua/fikua-ci-workflows/.github/workflows/gitleaks.yml@2d40554f8f019fc7e0968d97e6dc27f2b4778352  # v1.1.0

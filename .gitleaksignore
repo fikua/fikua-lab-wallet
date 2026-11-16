@@ -1,0 +1,2 @@
+# Throwaway self-signed P-256 test key, marked as such in the test (not a real key).
+00c445f23f3447510e8c9b399a3d705cd4458e39:src/presentation.test.ts:private-key:198
