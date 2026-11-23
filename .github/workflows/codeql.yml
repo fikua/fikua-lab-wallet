@@ -17,6 +17,6 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    uses: fikua/fikua-ci-workflows/.github/workflows/codeql.yml@383c2bdf97121b1405704f30468b0a45272cae73  # v1.2.0
+    uses: fikua/fikua-ci-workflows/.github/workflows/codeql.yml@617baa88c2f37b53b84a9024f72298da1caa35cf  # v1.3.0
     with:
       languages: '["javascript-typescript", "actions"]'
